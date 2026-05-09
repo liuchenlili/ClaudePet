@@ -287,6 +287,13 @@ npm run dev      # Electron 开发模式
 
 ---
 
+## 致谢
+
+- 感谢 [linux.do](https://linux.do/) 社区在开发过程中提供的反馈、讨论和灵感。
+- 感谢 [Claude Code](https://claude.com/claude-code) —— 整套 statusLine / hooks 体系是 ClaudePet 能存在的前提,大量代码也是在 Claude Code 协助下完成的。
+
+---
+
 ## License
 
 MIT
