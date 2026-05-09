@@ -83,7 +83,7 @@ async function statusLineCommand() {
     state = buildStatusLineState({});
     state.status = {
       kind: "error",
-      label: "ccpet could not parse statusLine JSON",
+      label: "claudepet could not parse statusLine JSON",
       detail: String(error.message || error),
       severity: "error",
       attention: false,
@@ -128,7 +128,7 @@ function parseFlags(argv) {
 }
 
 function printInstallResult(result) {
-  process.stdout.write(`ccpet installed for ${result.scope}\n`);
+  process.stdout.write(`claudepet installed for ${result.scope}\n`);
   process.stdout.write(`settings: ${result.settingsFile}\n`);
   if (result.backupPath) process.stdout.write(`backup: ${result.backupPath}\n`);
   process.stdout.write(`statusLine: ${result.statuslineCommand}\n`);
@@ -138,7 +138,7 @@ function printDoctor() {
   const runtime = readRuntime();
   const electron = resolveElectronBinary();
   const pets = listPets();
-  process.stdout.write(`ccpet home: ${appHome()}\n`);
+  process.stdout.write(`claudepet home: ${appHome()}\n`);
   process.stdout.write(`Claude home: ${claudeHome()}\n`);
   process.stdout.write(`config: ${configPath()}\n`);
   process.stdout.write(`state: ${statePath()}\n`);
@@ -148,16 +148,16 @@ function printDoctor() {
 }
 
 function printHelp() {
-  process.stdout.write(`ccpet commands
+  process.stdout.write(`claudepet commands
 
-  ccpet statusline              Claude Code statusLine bridge
-  ccpet hook                    Claude Code hooks bridge
-  ccpet install --scope local   Install current project .claude/settings.local.json
-  ccpet install --scope user    Install global ~/.claude/settings.json
-  ccpet uninstall --scope local Remove current project integration
-  ccpet start                   Launch the desktop pet
-  ccpet pets                    List available pets
-  ccpet doctor                  Show runtime diagnostics
+  claudepet statusline              Claude Code statusLine bridge
+  claudepet hook                    Claude Code hooks bridge
+  claudepet install --scope local   Install current project .claude/settings.local.json
+  claudepet install --scope user    Install global ~/.claude/settings.json
+  claudepet uninstall --scope local Remove current project integration
+  claudepet start                   Launch the desktop pet
+  claudepet pets                    List available pets
+  claudepet doctor                  Show runtime diagnostics
 `);
 }
 
@@ -179,7 +179,7 @@ async function main(argv = process.argv.slice(2)) {
       );
     case "uninstall": {
       const result = uninstallSettings({ scope: flags.scope || "local", cwd: process.cwd() });
-      process.stdout.write(`ccpet uninstalled for ${result.scope}\nsettings: ${result.settingsFile}\n`);
+      process.stdout.write(`claudepet uninstalled for ${result.scope}\nsettings: ${result.settingsFile}\n`);
       return;
     }
     case "start": {

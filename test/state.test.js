@@ -7,7 +7,7 @@ const test = require("node:test");
 const { buildStatusLineState, formatFallbackStatusLine, statusFromHook } = require("../src/shared/state");
 
 test("buildStatusLineState extracts context, git fallback, and transcript usage", () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ccpet-state-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claudepet-state-"));
   const transcript = path.join(dir, "session.jsonl");
   fs.writeFileSync(
     transcript,

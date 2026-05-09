@@ -48,8 +48,8 @@ async function sendEvent(payload, options = {}) {
 }
 
 function resolveElectronBinary() {
-  if (process.env.CCPET_ELECTRON_PATH && fs.existsSync(process.env.CCPET_ELECTRON_PATH)) {
-    return process.env.CCPET_ELECTRON_PATH;
+  if (process.env.CLAUDEPET_ELECTRON_PATH && fs.existsSync(process.env.CLAUDEPET_ELECTRON_PATH)) {
+    return process.env.CLAUDEPET_ELECTRON_PATH;
   }
   try {
     const electronPath = require("electron");
@@ -78,7 +78,7 @@ function delay(ms) {
 
 async function sendEventWithLaunch(payload) {
   if (await sendEvent(payload)) return true;
-  if (process.env.CCPET_NO_AUTO_LAUNCH === "1") return false;
+  if (process.env.CLAUDEPET_NO_AUTO_LAUNCH === "1") return false;
   if (!launchApp()) return false;
   await delay(650);
   return sendEvent(payload, { timeoutMs: 700 });

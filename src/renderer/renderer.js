@@ -379,10 +379,10 @@ function renderPetView() {
       </div>
     </div>
   `;
-  $("[data-action='manager']")?.addEventListener("click", () => window.ccpet.openManager());
-  $("[data-action='hide']")?.addEventListener("click", () => window.ccpet.hidePet());
+  $("[data-action='manager']")?.addEventListener("click", () => window.claudepet.openManager());
+  $("[data-action='hide']")?.addEventListener("click", () => window.claudepet.hidePet());
   $("[data-action='quit']")?.addEventListener("click", () => {
-    if (confirm("退出 ccpet 桌宠？")) window.ccpet.quitApp();
+    if (confirm("退出 ClaudePet 桌宠？")) window.claudepet.quitApp();
   });
   $("[data-action='toggle-details']")?.addEventListener("click", () => {
     model.ui.expanded = !model.ui.expanded;
@@ -563,7 +563,7 @@ function renderManagerNav() {
       <div class="manager-brand">
         <img class="manager-brand-icon" src="./assets/app-icon-64.png" alt="">
         <div class="manager-brand-copy">
-          <h1 class="title">ccpet</h1>
+          <h1 class="title">ClaudePet</h1>
           <p class="subtitle">Claude Code 桌宠设置中心</p>
         </div>
       </div>
@@ -803,7 +803,7 @@ async function refreshUsage() {
   if (model.usageLoading) return;
   model.usageLoading = true;
   try {
-    const usage = await window.ccpet.getUsage();
+    const usage = await window.claudepet.getUsage();
     model.usage = usage && !usage.error ? usage : null;
   } catch (error) {
     model.usage = null;
@@ -840,7 +840,7 @@ function attachManagerEvents() {
     button.addEventListener("click", async () => {
       const id = button.dataset.petId;
       model.selectedManagerPet = id;
-      const next = await window.ccpet.updateConfig({ selectedPet: id });
+      const next = await window.claudepet.updateConfig({ selectedPet: id });
       Object.assign(model, next);
       model.selectedManagerPet = id;
       render();
@@ -850,7 +850,7 @@ function attachManagerEvents() {
     input.addEventListener("input", async () => {
       const patch = {};
       setDeep(patch, input.dataset.configNumber, Number(input.value));
-      Object.assign(model, await window.ccpet.updateConfig(patch));
+      Object.assign(model, await window.claudepet.updateConfig(patch));
       drawCurrentFrame();
     });
   });
@@ -858,13 +858,13 @@ function attachManagerEvents() {
     input.addEventListener("change", async () => {
       const patch = {};
       setDeep(patch, input.dataset.configBool, input.checked);
-      Object.assign(model, await window.ccpet.updateConfig(patch));
+      Object.assign(model, await window.claudepet.updateConfig(patch));
     });
   });
   document.querySelectorAll("[data-field]").forEach((input) => {
     input.addEventListener("change", async () => {
       const fields = { ...model.config.fields, [input.dataset.field]: input.checked };
-      Object.assign(model, await window.ccpet.updateConfig({ fields }));
+      Object.assign(model, await window.claudepet.updateConfig({ fields }));
     });
   });
   $("[data-action='save-manifest']")?.addEventListener("click", async () => {
@@ -872,7 +872,7 @@ function attachManagerEvents() {
       const pet = selectedManagerPet();
       const patch = collectManifestPatch();
       setManifestSaveFlash("保存中…", "work");
-      await window.ccpet.savePetManifest(pet.id, patch);
+      await window.claudepet.savePetManifest(pet.id, patch);
       setManifestSaveFlash("已保存", "ok");
     } catch (error) {
       setManifestSaveFlash(error && error.message ? error.message : String(error), "error");
@@ -1089,8 +1089,8 @@ function isInteractiveTarget(x, y) {
 function setPassthrough(ignore) {
   if (passthroughState.ignoring === ignore) return;
   passthroughState.ignoring = ignore;
-  if (window.ccpet && typeof window.ccpet.setPassthrough === "function") {
-    window.ccpet.setPassthrough(ignore);
+  if (window.claudepet && typeof window.claudepet.setPassthrough === "function") {
+    window.claudepet.setPassthrough(ignore);
   }
 }
 
@@ -1104,7 +1104,7 @@ function installDragHandlers() {
         if (Math.abs(dx) > 1) model.drag.direction = dx < 0 ? "left" : "right";
         model.drag.lastScreenX = event.screenX;
         model.drag.lastScreenY = event.screenY;
-        window.ccpet.dragWindow({ dx, dy });
+        window.claudepet.dragWindow({ dx, dy });
       }
       return;
     }
@@ -1139,12 +1139,12 @@ function installDragHandlers() {
 }
 
 async function init() {
-  Object.assign(model, await window.ccpet.getInitial());
+  Object.assign(model, await window.claudepet.getInitial());
   model.selectedManagerPet = model.config.selectedPet;
   installDragHandlers();
   render();
   if (view === "manager") refreshUsage();
-  window.ccpet.onUpdate((payload) => {
+  window.claudepet.onUpdate((payload) => {
     Object.assign(model, payload);
     render();
   });

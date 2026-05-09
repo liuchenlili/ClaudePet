@@ -6,7 +6,7 @@ function appRoot() {
 }
 
 function appHome() {
-  return process.env.CCPET_HOME || path.join(os.homedir(), ".ccpet");
+  return process.env.CLAUDEPET_HOME || process.env.CCPET_HOME || path.join(os.homedir(), ".claudepet");
 }
 
 function claudeHome() {
@@ -30,7 +30,7 @@ function usagePath() {
 }
 
 function cliScript() {
-  return path.join(appRoot(), "bin", "ccpet.js");
+  return path.join(appRoot(), "bin", "claudepet.js");
 }
 
 function quoteCommandArg(value) {

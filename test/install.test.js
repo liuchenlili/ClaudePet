@@ -9,14 +9,14 @@ const { loadConfig } = require("../src/shared/config");
 const { installSettings, uninstallSettings } = require("../src/shared/install");
 
 function tempEnv() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "ccpet-install-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "claudepet-install-"));
   const cwd = path.join(root, "project");
   const claude = path.join(root, "claude");
-  const home = path.join(root, "ccpet");
+  const home = path.join(root, "claudepet");
   fs.mkdirSync(cwd, { recursive: true });
   fs.mkdirSync(claude, { recursive: true });
   process.env.CLAUDE_HOME = claude;
-  process.env.CCPET_HOME = home;
+  process.env.CLAUDEPET_HOME = home;
   return { root, cwd, claude, home };
 }
 
@@ -33,12 +33,12 @@ test("local install writes settings.local and preserves existing user statusLine
   const config = loadConfig();
 
   assert.equal(path.basename(result.settingsFile), "settings.local.json");
-  assert.match(settings.statusLine.command, /ccpet\.js" "statusline"/);
+  assert.match(settings.statusLine.command, /claudepet\.js" "statusline"/);
   assert.ok(settings.hooks.PermissionRequest.length > 0);
   assert.equal(config.legacyStatusLine.command, '"node" "legacy-hud.js"');
 });
 
-test("uninstall removes ccpet hooks and local statusLine", () => {
+test("uninstall removes claudepet hooks and local statusLine", () => {
   const env = tempEnv();
   installSettings({ scope: "local", cwd: env.cwd, preserveStatusLine: false });
   const result = uninstallSettings({ scope: "local", cwd: env.cwd });

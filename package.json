@@ -1,22 +1,22 @@
 {
-  "name": "ccpet",
+  "name": "claudepet",
   "version": "0.1.0",
   "private": true,
-  "description": "Claude Code desktop pet with statusLine and hook integration.",
+  "description": "ClaudePet — Claude Code desktop pet with statusLine and hook integration.",
   "type": "commonjs",
   "main": "src/main/main.js",
   "bin": {
-    "ccpet": "bin/ccpet.js"
+    "claudepet": "bin/claudepet.js"
   },
   "scripts": {
     "start": "electron .",
     "dev": "electron . --dev",
     "test": "node --test --test-isolation=none",
-    "doctor": "node bin/ccpet.js doctor",
-    "install:local": "node bin/ccpet.js install --scope local --preserve-statusline",
-    "install:user": "node bin/ccpet.js install --scope user --preserve-statusline",
-    "uninstall:local": "node bin/ccpet.js uninstall --scope local",
-    "uninstall:user": "node bin/ccpet.js uninstall --scope user"
+    "doctor": "node bin/claudepet.js doctor",
+    "install:local": "node bin/claudepet.js install --scope local --preserve-statusline",
+    "install:user": "node bin/claudepet.js install --scope user --preserve-statusline",
+    "uninstall:local": "node bin/claudepet.js uninstall --scope local",
+    "uninstall:user": "node bin/claudepet.js uninstall --scope user"
   },
   "keywords": [
     "claude-code",
@@ -25,8 +25,16 @@
     "statusline",
     "hooks"
   ],
-  "author": "",
+  "author": "liuchenlili",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/liuchenlili/ClaudePet.git"
+  },
+  "bugs": {
+    "url": "https://github.com/liuchenlili/ClaudePet/issues"
+  },
+  "homepage": "https://github.com/liuchenlili/ClaudePet#readme",
   "devDependencies": {
     "electron": "^42.0.0"
   }

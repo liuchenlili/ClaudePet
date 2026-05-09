@@ -28,8 +28,8 @@ function settingsPathForScope(scope, cwd = process.cwd()) {
   return path.join(cwd, ".claude", "settings.local.json");
 }
 
-function isCcpetCommand(command) {
-  return typeof command === "string" && command.includes("ccpet.js");
+function isClaudepetCommand(command) {
+  return typeof command === "string" && command.includes("claudepet.js");
 }
 
 function commandHook(command) {
@@ -45,7 +45,7 @@ function hasCcpetHook(entry) {
   return Boolean(
     entry &&
       Array.isArray(entry.hooks) &&
-      entry.hooks.some((hook) => hook && hook.type === "command" && isCcpetCommand(hook.command))
+      entry.hooks.some((hook) => hook && hook.type === "command" && isClaudepetCommand(hook.command))
   );
 }
 
@@ -72,7 +72,7 @@ function removeCcpetHooks(settings) {
     hooks[event] = hooks[event]
       .map((entry) => ({
         ...entry,
-        hooks: Array.isArray(entry.hooks) ? entry.hooks.filter((hook) => !isCcpetCommand(hook.command)) : []
+        hooks: Array.isArray(entry.hooks) ? entry.hooks.filter((hook) => !isClaudepetCommand(hook.command)) : []
       }))
       .filter((entry) => entry.hooks.length > 0);
     if (hooks[event].length === 0) delete hooks[event];
@@ -86,7 +86,7 @@ function timestamp() {
 
 function backupSettings(file, scope) {
   if (!fs.existsSync(file)) return null;
-  const backup = `${file}.ccpet-backup-${timestamp()}`;
+  const backup = `${file}.claudepet-backup-${timestamp()}`;
   fs.copyFileSync(file, backup);
   const config = loadConfig();
   saveConfig({ installBackups: { ...(config.installBackups || {}), [scope]: backup } });
@@ -94,12 +94,12 @@ function backupSettings(file, scope) {
 }
 
 function effectiveLegacyStatusLine(scope, targetSettings) {
-  if (targetSettings.statusLine && !isCcpetCommand(targetSettings.statusLine.command)) {
+  if (targetSettings.statusLine && !isClaudepetCommand(targetSettings.statusLine.command)) {
     return targetSettings.statusLine;
   }
   if (scope !== "user") {
     const userSettings = readJson(path.join(claudeHome(), "settings.json"), {});
-    if (userSettings && userSettings.statusLine && !isCcpetCommand(userSettings.statusLine.command)) {
+    if (userSettings && userSettings.statusLine && !isClaudepetCommand(userSettings.statusLine.command)) {
       return userSettings.statusLine;
     }
   }
@@ -150,7 +150,7 @@ function uninstallSettings(options = {}) {
   const config = loadConfig();
   const next = { ...settings };
 
-  if (next.statusLine && isCcpetCommand(next.statusLine.command)) {
+  if (next.statusLine && isClaudepetCommand(next.statusLine.command)) {
     if (scope === "user" && config.legacyStatusLine) next.statusLine = config.legacyStatusLine;
     else delete next.statusLine;
   }
@@ -163,7 +163,7 @@ function uninstallSettings(options = {}) {
 module.exports = {
   HOOK_EVENTS,
   installSettings,
-  isCcpetCommand,
+  isClaudepetCommand,
   mergeHooks,
   removeCcpetHooks,
   settingsPathForScope,

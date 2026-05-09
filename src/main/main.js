@@ -24,7 +24,7 @@ function rendererPayload() {
   };
 }
 
-function broadcast(channel = "ccpet:update") {
+function broadcast(channel = "claudepet:update") {
   const payload = rendererPayload();
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send(channel, payload);
@@ -51,7 +51,7 @@ function recordUsageFromEvent(event) {
     recordSnapshot({ sessionId, projectKey, model, snapshot });
   } catch (error) {
     // Avoid breaking the bridge on stats failures.
-    if (process.env.CCPET_DEBUG) console.error("[ccpet] usage record failed", error);
+    if (process.env.CLAUDEPET_DEBUG) console.error("[claudepet] usage record failed", error);
   }
 }
 
@@ -199,7 +199,7 @@ function createManagerWindow() {
     minWidth: 820,
     minHeight: 600,
     show: false,
-    title: "ccpet 设置中心",
+    title: "ClaudePet 设置中心",
     icon: windowIconPath(),
     webPreferences: {
       preload: path.join(__dirname, "..", "preload.js"),
@@ -224,7 +224,7 @@ function showManager() {
 
 function createTray() {
   tray = new Tray(trayIconImage());
-  tray.setToolTip("ccpet Claude Code 桌宠");
+  tray.setToolTip("ClaudePet Claude Code 桌宠");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       {
@@ -260,28 +260,28 @@ function createTray() {
 }
 
 function registerIpc() {
-  ipcMain.handle("ccpet:get-initial", () => rendererPayload());
-  ipcMain.handle("ccpet:update-config", (_event, patch) => {
+  ipcMain.handle("claudepet:get-initial", () => rendererPayload());
+  ipcMain.handle("claudepet:update-config", (_event, patch) => {
     config = saveConfig(patch || {});
     applyWindowConfig();
     broadcast();
     return rendererPayload();
   });
-  ipcMain.handle("ccpet:save-pet-manifest", (_event, petId, patch) => {
+  ipcMain.handle("claudepet:save-pet-manifest", (_event, petId, patch) => {
     const pet = savePetManifest(petId, patch || {});
     broadcast();
     return pet;
   });
-  ipcMain.handle("ccpet:open-manager", () => {
+  ipcMain.handle("claudepet:open-manager", () => {
     showManager();
     return true;
   });
-  ipcMain.handle("ccpet:hide-pet", () => {
+  ipcMain.handle("claudepet:hide-pet", () => {
     userHidden = true;
     if (petWindow) petWindow.hide();
     return true;
   });
-  ipcMain.handle("ccpet:drag-window", (_event, delta) => {
+  ipcMain.handle("claudepet:drag-window", (_event, delta) => {
     if (!petWindow || petWindow.isDestroyed()) return false;
     const dx = Math.round(Number(delta && delta.dx) || 0);
     const dy = Math.round(Number(delta && delta.dy) || 0);
@@ -290,17 +290,17 @@ function registerIpc() {
     petWindow.setPosition(x + dx, y + dy, false);
     return true;
   });
-  ipcMain.handle("ccpet:set-passthrough", (_event, ignore) => {
+  ipcMain.handle("claudepet:set-passthrough", (_event, ignore) => {
     if (!petWindow || petWindow.isDestroyed()) return false;
     if (ignore) petWindow.setIgnoreMouseEvents(true, { forward: true });
     else petWindow.setIgnoreMouseEvents(false);
     return true;
   });
-  ipcMain.handle("ccpet:quit-app", () => {
+  ipcMain.handle("claudepet:quit-app", () => {
     app.quit();
     return true;
   });
-  ipcMain.handle("ccpet:get-usage", () => {
+  ipcMain.handle("claudepet:get-usage", () => {
     try {
       return getUsageOverview();
     } catch (error) {
@@ -311,13 +311,13 @@ function registerIpc() {
 
 async function boot() {
   if (process.platform === "win32") {
-    app.setAppUserModelId("ccpet");
+    app.setAppUserModelId("claudepet");
   }
   try {
     const retention = Number(config.stats && config.stats.retentionDays);
     if (Number.isFinite(retention) && retention > 0) pruneOldData(retention);
   } catch (error) {
-    if (process.env.CCPET_DEBUG) console.error("[ccpet] usage prune failed", error);
+    if (process.env.CLAUDEPET_DEBUG) console.error("[claudepet] usage prune failed", error);
   }
   registerIpc();
   createPetWindow();

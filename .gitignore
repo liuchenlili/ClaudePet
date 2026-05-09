@@ -2,5 +2,5 @@ node_modules/
 dist/
 out/
 .claude/settings.local.json
-.ccpet/
+.claudepet/
 *.log

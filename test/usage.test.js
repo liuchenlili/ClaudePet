@@ -6,17 +6,17 @@ const test = require("node:test");
 
 function withTempHome(name, fn) {
   return async () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `ccpet-${name}-`));
-    const original = process.env.CCPET_HOME;
-    process.env.CCPET_HOME = dir;
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), `claudepet-${name}-`));
+    const original = process.env.CLAUDEPET_HOME;
+    process.env.CLAUDEPET_HOME = dir;
     delete require.cache[require.resolve("../src/shared/paths")];
     delete require.cache[require.resolve("../src/shared/usage")];
     try {
       const usage = require("../src/shared/usage");
       await fn(usage, dir);
     } finally {
-      if (original === undefined) delete process.env.CCPET_HOME;
-      else process.env.CCPET_HOME = original;
+      if (original === undefined) delete process.env.CLAUDEPET_HOME;
+      else process.env.CLAUDEPET_HOME = original;
       delete require.cache[require.resolve("../src/shared/paths")];
       delete require.cache[require.resolve("../src/shared/usage")];
       fs.rmSync(dir, { recursive: true, force: true });
