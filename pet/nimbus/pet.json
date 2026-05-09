@@ -1,0 +1,107 @@
+{
+  "id": "nimbus",
+  "displayName": "Nimbus",
+  "description": "A tiny chibi martial-arts kid riding a golden cloud companion.",
+  "spritesheetPath": "spritesheet.webp",
+  "kind": "character",
+  "frameWidth": 192,
+  "frameHeight": 208,
+  "columns": 8,
+  "rows": 9,
+  "defaultScale": 0.48,
+  "anchor": {
+    "x": 0.5,
+    "y": 1
+  },
+  "animations": {
+    "idle": {
+      "frames": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "thinking": {
+      "frames": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "fps": 8,
+      "loop": true
+    },
+    "tool": {
+      "frames": [
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ],
+      "fps": 10,
+      "loop": true
+    },
+    "waiting": {
+      "frames": [
+        24,
+        25,
+        26,
+        27
+      ],
+      "fps": 5,
+      "loop": true
+    },
+    "success": {
+      "frames": [
+        32,
+        33,
+        34,
+        35,
+        36
+      ],
+      "fps": 10,
+      "loop": false
+    },
+    "error": {
+      "frames": [
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+      ],
+      "fps": 6,
+      "loop": true
+    },
+    "run": {
+      "frames": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15
+      ],
+      "fps": 12,
+      "loop": true
+    }
+  }
+}

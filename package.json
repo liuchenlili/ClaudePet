@@ -1,0 +1,33 @@
+{
+  "name": "ccpet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code desktop pet with statusLine and hook integration.",
+  "type": "commonjs",
+  "main": "src/main/main.js",
+  "bin": {
+    "ccpet": "bin/ccpet.js"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node --test --test-isolation=none",
+    "doctor": "node bin/ccpet.js doctor",
+    "install:local": "node bin/ccpet.js install --scope local --preserve-statusline",
+    "install:user": "node bin/ccpet.js install --scope user --preserve-statusline",
+    "uninstall:local": "node bin/ccpet.js uninstall --scope local",
+    "uninstall:user": "node bin/ccpet.js uninstall --scope user"
+  },
+  "keywords": [
+    "claude-code",
+    "electron",
+    "desktop-pet",
+    "statusline",
+    "hooks"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^42.0.0"
+  }
+}
