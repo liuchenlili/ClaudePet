@@ -4,6 +4,26 @@ Claude Code 桌面宠物。通过 Claude Code 的 `statusLine` 和 `hooks` 把�
 
 ---
 
+## 截图
+
+**桌面常驻窗口** — 桌宠 + HP 条 + 气泡输出
+
+![桌面主视图](png/zhuye.png)
+
+**展开面板** — 实时 token、会话 ID、git 状态、本次花费等
+
+![展开后的详情面板](png/gengduo.png)
+
+**设置中心 · 宠物** — 切换、预览、可视化编辑 manifest
+
+![宠物管理页](png/petset.png)
+
+**设置中心 · 使用统计** — 按今日 / 7 天 / 30 天 / 全部，分项目和分日期的 token / 花费汇总
+
+![使用统计页](png/tongji.png)
+
+---
+
 ## 前置要求
 
 - Node.js 18+（Electron 42 要求）
