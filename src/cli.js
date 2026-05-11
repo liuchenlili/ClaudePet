@@ -3,7 +3,12 @@ const { loadConfig } = require("./shared/config");
 const { installSettings, uninstallSettings } = require("./shared/install");
 const { listPets } = require("./shared/pets");
 const { buildStatusLineState, formatFallbackStatusLine, statusFromHook } = require("./shared/state");
-const { saveRuntimeState, loadRuntimeState, appendHistory } = require("./shared/runtime-state");
+const {
+  saveSessionState,
+  loadSessionState,
+  appendHistory,
+  resolveSessionId
+} = require("./shared/runtime-state");
 const { sendEventWithLaunch, resolveElectronBinary, readRuntime, launchApp } = require("./shared/bridge-client");
 const { appHome, claudeHome, configPath, runtimePath, statePath } = require("./shared/paths");
 
@@ -60,15 +65,16 @@ function runLegacyStatusLine(command, input, timeoutMs = 2200) {
   });
 }
 
-function mergeStatePatch(patch) {
-  const current = loadRuntimeState();
+function mergeStatePatch(sessionId, patch) {
+  const id = resolveSessionId(sessionId);
+  const current = loadSessionState(id);
   const next = {
     ...current,
     ...patch,
     status: patch.status || current.status,
     history: patch.status ? appendHistory(current, patch.status) : current.history
   };
-  saveRuntimeState(next);
+  saveSessionState(id, next);
   return next;
 }
 
@@ -91,8 +97,9 @@ async function statusLineCommand() {
       updatedAt: new Date().toISOString()
     };
   }
-  mergeStatePatch(state);
-  await sendEventWithLaunch({ type: "statusline", raw: parsed, state, receivedAt: new Date().toISOString() });
+  const sessionId = (state.session && state.session.id) || parsed.session_id || "";
+  mergeStatePatch(sessionId, state);
+  await sendEventWithLaunch({ type: "statusline", sessionId, raw: parsed, state, receivedAt: new Date().toISOString() });
 
   const config = loadConfig();
   const legacyCommand = config.legacyStatusLine && config.legacyStatusLine.command;
@@ -104,8 +111,9 @@ async function hookCommand() {
   const raw = await readStdin();
   const parsed = parseJson(raw);
   const status = statusFromHook(parsed);
-  mergeStatePatch({ status });
-  await sendEventWithLaunch({ type: "hook", raw: parsed, status, receivedAt: new Date().toISOString() });
+  const sessionId = parsed.session_id || "";
+  mergeStatePatch(sessionId, { status });
+  await sendEventWithLaunch({ type: "hook", sessionId, raw: parsed, status, receivedAt: new Date().toISOString() });
 }
 
 function parseFlags(argv) {

@@ -72,7 +72,8 @@ const ICONS = {
   anchor: '<path d="M12 3v18"/><path d="M8 7a4 4 0 1 1 8 0c0 2-1.6 3.3-4 3.3S8 9 8 7Z"/><path d="M5 15c1.5 4 5.3 6 7 6s5.5-2 7-6"/><path d="M3 15h4"/><path d="M17 15h4"/>',
   clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
   eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.3 10.3 0 0 1 12 4c5 0 8.5 4.5 9.5 8a12.7 12.7 0 0 1-2.3 3.8"/><path d="M6.6 6.7C4.5 8 3.1 10.1 2.5 12c1 3.5 4.5 8 9.5 8 1.4 0 2.7-.3 3.8-.9"/>',
-  power: '<path d="M12 3v8"/><path d="M7.1 6.9a7 7 0 1 0 9.8 0"/>'
+  power: '<path d="M12 3v8"/><path d="M7.1 6.9a7 7 0 1 0 9.8 0"/>',
+  close: '<path d="M6 6l12 12"/><path d="M18 6 6 18"/>'
 };
 
 function icon(name, label = "") {
@@ -388,16 +389,45 @@ function renderPetView() {
       </div>
       <div class="pet-context-menu" data-pet-context-menu data-clickable hidden role="menu" aria-label="桌宠菜单">
         <button data-context-action="manager" role="menuitem">${icon("settings", "设置")}</button>
+        <button data-context-action="toggle-panel" role="menuitemcheckbox" aria-checked="${config.showPanel ? "true" : "false"}">${icon("panel", config.showPanel ? "隐藏消息框" : "显示消息框")}</button>
         <button data-context-action="hide" role="menuitem">${icon("eyeOff", "隐藏")}</button>
-        <button class="danger" data-context-action="quit" role="menuitem">${icon("power", "关闭")}</button>
+        <button data-context-action="close" role="menuitem">${icon("close", "关闭此宠物")}</button>
+        <button class="danger" data-context-action="quit" role="menuitem">${icon("power", "退出 ClaudePet")}</button>
+        <div class="pet-context-divider" role="separator"></div>
+        <div class="pet-context-pets" data-clickable role="group" aria-label="切换形象">
+          ${model.pets.map((p) => `
+            <button class="pet-context-pet ${p.id === model.config.selectedPet ? "active" : ""}" data-context-pet="${escapeHtml(p.id)}" role="menuitemradio" aria-checked="${p.id === model.config.selectedPet}" title="${escapeHtml(p.displayName)}">
+              <span class="pet-context-pet-thumb" data-context-thumb="${escapeHtml(p.id)}"></span>
+            </button>
+          `).join("")}
+        </div>
       </div>
     </div>
   `;
   $("[data-action='manager']")?.addEventListener("click", () => runPetAction("manager"));
   $("[data-action='hide']")?.addEventListener("click", () => runPetAction("hide"));
-  $("[data-action='quit']")?.addEventListener("click", () => runPetAction("quit", { confirm: true }));
+  $("[data-action='quit']")?.addEventListener("click", () => runPetAction("close", { confirm: true }));
   document.querySelectorAll("[data-context-action]").forEach((button) => {
-    button.addEventListener("click", () => runPetAction(button.dataset.contextAction));
+    button.addEventListener("click", () => {
+      const action = button.dataset.contextAction;
+      if (action === "close" || action === "quit") return runPetAction(action, { confirm: true });
+      runPetAction(action);
+    });
+  });
+  document.querySelectorAll("[data-context-pet]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const petId = button.dataset.contextPet;
+      if (!petId || petId === model.config.selectedPet) {
+        hidePetContextMenu();
+        return;
+      }
+      hidePetContextMenu();
+      try {
+        await window.claudepet.setSessionPet(petId);
+      } catch (error) {
+        // main process will broadcast back on success; failure is silent
+      }
+    });
   });
   $("[data-action='toggle-details']")?.addEventListener("click", () => {
     model.ui.expanded = !model.ui.expanded;
@@ -409,17 +439,25 @@ function runPetAction(action, options = {}) {
   hidePetContextMenu();
   if (action === "manager") {
     window.claudepet.openManager();
+  } else if (action === "toggle-panel") {
+    window.claudepet.togglePanel();
   } else if (action === "hide") {
     window.claudepet.hidePet();
+  } else if (action === "close") {
+    if (options.confirm && !confirm("关闭这只桌宠？（其它会话不受影响）")) return;
+    window.claudepet.closePet();
   } else if (action === "quit") {
-    if (options.confirm && !confirm("关闭 ClaudePet 桌宠？")) return;
+    if (options.confirm && !confirm("退出 ClaudePet？所有桌宠都会关闭。")) return;
     window.claudepet.quitApp();
   }
 }
 
+const contextMenuState = { open: false };
+
 function hidePetContextMenu() {
   const menu = $("[data-pet-context-menu]");
   if (menu) menu.hidden = true;
+  contextMenuState.open = false;
 }
 
 function showPetContextMenu(event) {
@@ -436,6 +474,7 @@ function showPetContextMenu(event) {
   const top = Math.min(Math.max(margin, event.clientY), maxTop);
   menu.style.left = `${left}px`;
   menu.style.top = `${top}px`;
+  contextMenuState.open = true;
   menu.querySelector("button")?.focus({ preventScroll: true });
 }
 
@@ -783,7 +822,20 @@ function renderFieldToggle(key, checked) {
 }
 
 function renderAppearanceTab(config) {
+  const theme = config.theme === "light" ? "light" : "dark";
   return `
+    <section class="section">
+      ${sectionTitle("palette", "主题")}
+      <div class="theme-switcher" role="radiogroup" aria-label="主题模式">
+        <button class="theme-option ${theme === "dark" ? "active" : ""}" data-config-theme="dark" role="radio" aria-checked="${theme === "dark"}">
+          ${icon("eyeOff", "暗色")}
+        </button>
+        <button class="theme-option ${theme === "light" ? "active" : ""}" data-config-theme="light" role="radio" aria-checked="${theme === "light"}">
+          ${icon("spark", "亮色")}
+        </button>
+      </div>
+    </section>
+
     <section class="section">
       ${sectionTitle("palette", "显示设置")}
       <div class="form-grid">
@@ -909,6 +961,16 @@ function attachManagerEvents() {
       const patch = {};
       setDeep(patch, input.dataset.configBool, input.checked);
       Object.assign(model, await window.claudepet.updateConfig(patch));
+    });
+  });
+  document.querySelectorAll("[data-config-theme]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const theme = button.dataset.configTheme === "light" ? "light" : "dark";
+      if (model.config && model.config.theme === theme) return;
+      Object.assign(model, await window.claudepet.updateConfig({ theme }));
+      applyTheme(theme);
+      renderManagerView();
+      drawCurrentFrame();
     });
   });
   document.querySelectorAll("[data-field]").forEach((input) => {
@@ -1095,6 +1157,9 @@ function render() {
   if (!model.state || !model.config) return;
   const outputSnapshot = view === "pet" ? captureOutputScroll() : null;
   const managerSnapshot = view === "manager" ? captureManagerSnapshot() : null;
+  // Pet view re-renders replace the context menu DOM with the default hidden state;
+  // keep our open-flag in sync so passthrough doesn't stay locked off.
+  if (view === "pet") contextMenuState.open = false;
   if (view === "manager") renderManagerView();
   else renderPetView();
   drawCurrentFrame();
@@ -1123,6 +1188,10 @@ function drawCurrentFrame(now = performance.now()) {
     const thumbPet = model.pets.find((candidate) => candidate.id === thumb.dataset.thumb);
     applyFrame(thumb, thumbPet, 0, 0.25);
   }
+  for (const thumb of document.querySelectorAll("[data-context-thumb]")) {
+    const thumbPet = model.pets.find((candidate) => candidate.id === thumb.dataset.contextThumb);
+    applyFrame(thumb, thumbPet, 0, 0.18);
+  }
 }
 
 const passthroughState = { ignoring: true };
@@ -1137,10 +1206,11 @@ function isInteractiveTarget(x, y) {
 }
 
 function setPassthrough(ignore) {
-  if (passthroughState.ignoring === ignore) return;
-  passthroughState.ignoring = ignore;
+  const next = contextMenuState.open ? false : ignore;
+  if (passthroughState.ignoring === next) return;
+  passthroughState.ignoring = next;
   if (window.claudepet && typeof window.claudepet.setPassthrough === "function") {
-    window.claudepet.setPassthrough(ignore);
+    window.claudepet.setPassthrough(next);
   }
 }
 
@@ -1212,14 +1282,22 @@ function installDragHandlers() {
   });
 }
 
+function applyTheme(theme) {
+  const root = document.documentElement;
+  root.classList.remove("theme-light", "theme-dark");
+  root.classList.add(theme === "light" ? "theme-light" : "theme-dark");
+}
+
 async function init() {
   Object.assign(model, await window.claudepet.getInitial());
+  applyTheme(model.config && model.config.theme);
   model.selectedManagerPet = model.config.selectedPet;
   installDragHandlers();
   render();
   if (view === "manager") refreshUsage();
   window.claudepet.onUpdate((payload) => {
     Object.assign(model, payload);
+    applyTheme(model.config && model.config.theme);
     render();
   });
   function tick(now) {

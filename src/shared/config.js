@@ -4,6 +4,9 @@ const path = require("node:path");
 
 const DEFAULT_CONFIG = {
   selectedPet: "clawd",
+  selectedPets: {},
+  panelVisibility: {},
+  theme: "dark",
   scale: 0.48,
   opacity: 0.96,
   alwaysOnTop: true,
@@ -11,6 +14,7 @@ const DEFAULT_CONFIG = {
   showPanel: true,
   panelCompact: false,
   position: null,
+  positions: {},
   notifications: {
     system: true,
     sound: false,
@@ -39,6 +43,7 @@ function loadConfig() {
   const loadedScale = Number(config.scale || DEFAULT_CONFIG.scale);
   config.scale = loadedScale > 1.1 ? DEFAULT_CONFIG.scale : Math.max(0.32, Math.min(1.1, loadedScale));
   config.opacity = Math.max(0.35, Math.min(1, Number(config.opacity || DEFAULT_CONFIG.opacity)));
+  config.theme = config.theme === "light" ? "light" : "dark";
   return config;
 }
 

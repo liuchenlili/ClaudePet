@@ -3,39 +3,140 @@ const { app, BrowserWindow, ipcMain, Menu, nativeImage, Notification, screen, Tr
 const { startBridgeServer } = require("./bridge-server");
 const { loadConfig, saveConfig } = require("../shared/config");
 const { listPets, savePetManifest } = require("../shared/pets");
-const { loadRuntimeState, saveRuntimeState, appendHistory } = require("../shared/runtime-state");
+const {
+  DEFAULT_SESSION_ID,
+  DEFAULT_SESSION_STATE,
+  appendHistory,
+  listSessions,
+  loadSessionState,
+  pruneStaleSessions,
+  removeSession,
+  resolveSessionId,
+  saveSessionState
+} = require("../shared/runtime-state");
 const { recordSnapshot, snapshotFromState, projectKeyFrom, pruneOldData, getUsageOverview } = require("../shared/usage");
 
 const APP_NAME = "ClaudePet";
 const APP_USER_MODEL_ID = "com.liuchenlili.ClaudePet";
+const SESSION_INACTIVITY_MS = 60 * 60 * 1000;
+const SESSION_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
+const PET_WINDOW_OFFSET = 36;
 
 app.setName(APP_NAME);
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_USER_MODEL_ID);
 }
 
-let petWindow = null;
+const sessions = new Map();
+const petWindows = new Map();
+const userHidden = new Set();
+const positionSaveTimers = new Map();
 let managerWindow = null;
 let tray = null;
 let bridge = null;
 let config = loadConfig();
-let state = loadRuntimeState();
-let savePositionTimer = null;
-let userHidden = false;
+let pruneTimer = null;
 
-function rendererPayload() {
+function cloneDefaultSessionState() {
+  return JSON.parse(JSON.stringify(DEFAULT_SESSION_STATE));
+}
+
+function getSessionState(sessionId) {
+  const id = resolveSessionId(sessionId);
+  if (!sessions.has(id)) sessions.set(id, cloneDefaultSessionState());
+  return sessions.get(id);
+}
+
+function setSessionState(sessionId, nextState) {
+  const id = resolveSessionId(sessionId);
+  sessions.set(id, nextState);
+  saveSessionState(id, nextState);
+  return nextState;
+}
+
+function dropSession(sessionId) {
+  const id = resolveSessionId(sessionId);
+  sessions.delete(id);
+  userHidden.delete(id);
+  removeSession(id);
+  if (id === DEFAULT_SESSION_ID) return;
+  const overrides = { ...(config.selectedPets || {}) };
+  const positions = { ...(config.positions || {}) };
+  const panelVisibility = { ...(config.panelVisibility || {}) };
+  let changed = false;
+  if (id in overrides) { delete overrides[id]; changed = true; }
+  if (id in positions) { delete positions[id]; changed = true; }
+  if (id in panelVisibility) { delete panelVisibility[id]; changed = true; }
+  if (changed) config = saveConfig({ selectedPets: overrides, positions, panelVisibility });
+}
+
+function sessionSummary(sessionId) {
+  const id = resolveSessionId(sessionId);
+  const state = sessions.get(id) || cloneDefaultSessionState();
   return {
-    state,
-    config,
-    pets: listPets(),
-    appVersion: app.getVersion()
+    sessionId: id,
+    cwdName: (state.session && state.session.cwdName) || "",
+    cwd: (state.session && state.session.cwd) || "",
+    status: state.status || null,
+    updatedAt: state.updatedAt || null,
+    lastEventAt: state.lastEventAt || null
   };
 }
 
-function broadcast(channel = "claudepet:update") {
-  const payload = rendererPayload();
-  for (const window of BrowserWindow.getAllWindows()) {
-    if (!window.isDestroyed()) window.webContents.send(channel, payload);
+function effectivePetIdFor(sessionId) {
+  const id = resolveSessionId(sessionId);
+  const overrides = (config && config.selectedPets) || {};
+  return overrides[id] || config.selectedPet;
+}
+
+function effectivePanelVisibilityFor(sessionId) {
+  const id = resolveSessionId(sessionId);
+  const overrides = (config && config.panelVisibility) || {};
+  if (typeof overrides[id] === "boolean") return overrides[id];
+  return Boolean(config.showPanel);
+}
+
+function rendererPayloadFor(sessionId) {
+  const id = resolveSessionId(sessionId);
+  const sessionConfig = {
+    ...config,
+    selectedPet: effectivePetIdFor(id),
+    showPanel: effectivePanelVisibilityFor(id)
+  };
+  return {
+    sessionId: id,
+    state: sessions.get(id) || cloneDefaultSessionState(),
+    config: sessionConfig,
+    pets: listPets(),
+    appVersion: app.getVersion(),
+    sessionsList: Array.from(sessions.keys()).map(sessionSummary)
+  };
+}
+
+function managerPayload() {
+  const firstId = sessions.keys().next().value || DEFAULT_SESSION_ID;
+  const payload = rendererPayloadFor(firstId);
+  payload.sessionId = null;
+  return payload;
+}
+
+function broadcastSession(sessionId) {
+  const id = resolveSessionId(sessionId);
+  const window = petWindows.get(id);
+  if (window && !window.isDestroyed()) {
+    window.webContents.send("claudepet:update", rendererPayloadFor(id));
+  }
+  if (managerWindow && !managerWindow.isDestroyed()) {
+    managerWindow.webContents.send("claudepet:update", managerPayload());
+  }
+}
+
+function broadcastConfigChange() {
+  for (const [id, window] of petWindows.entries()) {
+    if (!window.isDestroyed()) window.webContents.send("claudepet:update", rendererPayloadFor(id));
+  }
+  if (managerWindow && !managerWindow.isDestroyed()) {
+    managerWindow.webContents.send("claudepet:update", managerPayload());
   }
 }
 
@@ -58,34 +159,49 @@ function recordUsageFromEvent(event) {
   try {
     recordSnapshot({ sessionId, projectKey, model, snapshot });
   } catch (error) {
-    // Avoid breaking the bridge on stats failures.
     if (process.env.CLAUDEPET_DEBUG) console.error("[claudepet] usage record failed", error);
   }
 }
 
-function updateStateFromEvent(event) {
+function sessionIdFromEvent(event) {
+  if (event && event.sessionId) return event.sessionId;
+  if (event && event.type === "statusline") {
+    const fromState = event.state && event.state.session && event.state.session.id;
+    if (fromState) return fromState;
+    const fromRaw = event.raw && event.raw.session_id;
+    if (fromRaw) return fromRaw;
+  }
+  if (event && event.type === "hook") {
+    const fromRaw = event.raw && event.raw.session_id;
+    if (fromRaw) return fromRaw;
+  }
+  return DEFAULT_SESSION_ID;
+}
+
+function updateSessionFromEvent(sessionId, event) {
+  const id = resolveSessionId(sessionId);
+  const current = getSessionState(id);
+  let next = current;
   if (event.type === "statusline") {
     const incoming = event.state.status || null;
-    const activeStatus = isRecentActiveStatus(state.status) ? state.status : null;
+    const activeStatus = isRecentActiveStatus(current.status) ? current.status : null;
     let mergedStatus;
     if (activeStatus) {
-      // Keep the sticky hook kind/label/animation, but always pull the freshest
-      // assistant output (detail) from the latest statusline event.
       mergedStatus = incoming && incoming.detail !== undefined
         ? { ...activeStatus, detail: incoming.detail, updatedAt: activeStatus.updatedAt }
         : activeStatus;
     } else {
-      mergedStatus = incoming || state.status;
+      mergedStatus = incoming || current.status;
     }
-    state = {
-      ...state,
+    next = {
+      ...current,
       ...event.state,
       status: mergedStatus,
-      activeSubagent: state.activeSubagent || null
+      activeSubagent: current.activeSubagent || null
     };
   } else if (event.type === "hook") {
     const status = event.status || {};
-    let activeSubagent = state.activeSubagent || null;
+    let activeSubagent = current.activeSubagent || null;
     if (status.kind === "subagent-running") {
       activeSubagent = {
         type: status.subagentType || "agent",
@@ -94,15 +210,17 @@ function updateStateFromEvent(event) {
     } else if (status.kind === "subagent-complete" || status.subagentEnded) {
       activeSubagent = null;
     }
-    state = {
-      ...state,
+    next = {
+      ...current,
       status,
-      history: appendHistory(state, status),
+      history: appendHistory(current, status),
       activeSubagent
     };
   }
-  state.updatedAt = new Date().toISOString();
-  saveRuntimeState(state);
+  next.updatedAt = new Date().toISOString();
+  next.lastEventAt = next.updatedAt;
+  setSessionState(id, next);
+  return next;
 }
 
 function maybeNotify(status) {
@@ -115,21 +233,26 @@ function maybeNotify(status) {
       silent: !(config.notifications && config.notifications.sound)
     }).show();
   }
-  if (petWindow && config.notifications && config.notifications.flashWindow) {
-    petWindow.flashFrame(true);
-    setTimeout(() => {
-      if (petWindow && !petWindow.isDestroyed()) petWindow.flashFrame(false);
-    }, 2500);
+  for (const window of petWindows.values()) {
+    if (window && !window.isDestroyed() && config.notifications && config.notifications.flashWindow) {
+      window.flashFrame(true);
+      setTimeout(() => {
+        if (window && !window.isDestroyed()) window.flashFrame(false);
+      }, 2500);
+    }
   }
 }
 
 async function handleBridgeEvent(event) {
   recordUsageFromEvent(event);
-  updateStateFromEvent(event);
-  broadcast();
+  const sessionId = resolveSessionId(sessionIdFromEvent(event));
+  updateSessionFromEvent(sessionId, event);
+  ensurePetWindow(sessionId);
+  broadcastSession(sessionId);
   maybeNotify(event.status);
-  if (userHidden) return;
-  if (petWindow && !petWindow.isVisible()) petWindow.showInactive();
+  if (userHidden.has(sessionId)) return;
+  const window = petWindows.get(sessionId);
+  if (window && !window.isDestroyed() && !window.isVisible()) window.showInactive();
 }
 
 function assetPath(name) {
@@ -168,35 +291,86 @@ function menuIconImage() {
   return nativeImage.createFromPath(assetPath("app-icon-16.png"));
 }
 
-function applyWindowConfig() {
-  if (!petWindow) return;
-  petWindow.setAlwaysOnTop(Boolean(config.alwaysOnTop), "screen-saver");
-  petWindow.setOpacity(Number(config.opacity || 1));
-  if (config.position && Number.isFinite(config.position.x) && Number.isFinite(config.position.y)) {
-    const bounds = petWindow.getBounds();
-    const display = screen.getDisplayMatching({ ...bounds, x: Math.round(config.position.x), y: Math.round(config.position.y) });
+function resolveStoredPosition(sessionId) {
+  const positions = (config && config.positions) || {};
+  const direct = positions[sessionId];
+  if (direct && Number.isFinite(direct.x) && Number.isFinite(direct.y)) return direct;
+  if (sessionId === DEFAULT_SESSION_ID && config.position && Number.isFinite(config.position.x) && Number.isFinite(config.position.y)) {
+    return config.position;
+  }
+  return null;
+}
+
+function pickInitialPosition(sessionId) {
+  const stored = resolveStoredPosition(sessionId);
+  if (stored) return stored;
+  const primary = screen.getPrimaryDisplay();
+  const work = primary.workArea;
+  const baseX = work.x + work.width - 460;
+  const baseY = work.y + work.height - 360;
+  const offsetIndex = petWindows.size;
+  return {
+    x: baseX - offsetIndex * PET_WINDOW_OFFSET,
+    y: baseY - offsetIndex * PET_WINDOW_OFFSET
+  };
+}
+
+function applyWindowConfigTo(window, sessionId) {
+  if (!window || window.isDestroyed()) return;
+  window.setAlwaysOnTop(Boolean(config.alwaysOnTop), "screen-saver");
+  window.setOpacity(Number(config.opacity || 1));
+  const target = resolveStoredPosition(sessionId);
+  if (target) {
+    const bounds = window.getBounds();
+    const display = screen.getDisplayMatching({ ...bounds, x: Math.round(target.x), y: Math.round(target.y) });
     const work = display.workArea;
-    const x = Math.min(Math.max(work.x + 8, Math.round(config.position.x)), work.x + work.width - bounds.width - 8);
-    const y = Math.min(Math.max(work.y + 8, Math.round(config.position.y)), work.y + work.height - bounds.height - 8);
-    petWindow.setPosition(x, y, false);
+    const x = Math.min(Math.max(work.x + 8, Math.round(target.x)), work.x + work.width - bounds.width - 8);
+    const y = Math.min(Math.max(work.y + 8, Math.round(target.y)), work.y + work.height - bounds.height - 8);
+    window.setPosition(x, y, false);
   }
 }
 
-function schedulePositionSave() {
-  if (!petWindow || petWindow.isDestroyed()) return;
-  clearTimeout(savePositionTimer);
-  savePositionTimer = setTimeout(() => {
-    if (!petWindow || petWindow.isDestroyed()) return;
-    const [x, y] = petWindow.getPosition();
-    config = saveConfig({ position: { x, y } });
-    broadcast();
-  }, 180);
+function applyConfigToAllWindows() {
+  for (const [id, window] of petWindows.entries()) {
+    applyWindowConfigTo(window, id);
+  }
 }
 
-function createPetWindow() {
-  petWindow = new BrowserWindow({
+function schedulePositionSave(sessionId) {
+  const window = petWindows.get(sessionId);
+  if (!window || window.isDestroyed()) return;
+  clearTimeout(positionSaveTimers.get(sessionId));
+  positionSaveTimers.set(
+    sessionId,
+    setTimeout(() => {
+      const target = petWindows.get(sessionId);
+      if (!target || target.isDestroyed()) return;
+      const [x, y] = target.getPosition();
+      const positions = { ...(config.positions || {}), [sessionId]: { x, y } };
+      const patch = { positions };
+      if (sessionId === DEFAULT_SESSION_ID) patch.position = { x, y };
+      config = saveConfig(patch);
+      broadcastConfigChange();
+    }, 180)
+  );
+}
+
+function ensurePetWindow(sessionId) {
+  const id = resolveSessionId(sessionId);
+  const existing = petWindows.get(id);
+  if (existing && !existing.isDestroyed()) return existing;
+  if (existing) petWindows.delete(id);
+  return createPetWindow(id);
+}
+
+function createPetWindow(sessionId) {
+  const id = resolveSessionId(sessionId);
+  const initial = pickInitialPosition(id);
+  const window = new BrowserWindow({
     width: 438,
     height: 338,
+    x: Math.round(initial.x),
+    y: Math.round(initial.y),
     frame: false,
     transparent: true,
     resizable: true,
@@ -213,14 +387,23 @@ function createPetWindow() {
       nodeIntegration: false
     }
   });
-  applyWindowAppDetails(petWindow);
-  petWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"), { query: { view: "pet" } });
-  petWindow.once("ready-to-show", () => {
-    applyWindowConfig();
-    petWindow.setIgnoreMouseEvents(true, { forward: true });
-    petWindow.showInactive();
+  applyWindowAppDetails(window);
+  window.loadFile(path.join(__dirname, "..", "renderer", "index.html"), {
+    query: { view: "pet", session: id }
   });
-  petWindow.on("moved", schedulePositionSave);
+  window.once("ready-to-show", () => {
+    applyWindowConfigTo(window, id);
+    window.setIgnoreMouseEvents(true, { forward: true });
+    if (!userHidden.has(id)) window.showInactive();
+  });
+  window.on("moved", () => schedulePositionSave(id));
+  window.on("closed", () => {
+    petWindows.delete(id);
+    clearTimeout(positionSaveTimers.get(id));
+    positionSaveTimers.delete(id);
+  });
+  petWindows.set(id, window);
+  return window;
 }
 
 function createManagerWindow() {
@@ -254,25 +437,50 @@ function showManager() {
   managerWindow.focus();
 }
 
+function showAllPets() {
+  if (petWindows.size === 0) ensurePetWindow(DEFAULT_SESSION_ID);
+  for (const [id, window] of petWindows.entries()) {
+    userHidden.delete(id);
+    if (window && !window.isDestroyed()) window.showInactive();
+  }
+}
+
+function hideAllPets() {
+  for (const [id, window] of petWindows.entries()) {
+    userHidden.add(id);
+    if (window && !window.isDestroyed()) window.hide();
+  }
+}
+
+function closePetWindow(sessionId, options = {}) {
+  const id = resolveSessionId(sessionId);
+  const window = petWindows.get(id);
+  if (window && !window.isDestroyed()) window.destroy();
+  petWindows.delete(id);
+  if (options.dropSession) dropSession(id);
+}
+
+function pruneInactiveSessions() {
+  const removed = pruneStaleSessions(SESSION_INACTIVITY_MS);
+  for (const id of removed) {
+    sessions.delete(id);
+    const window = petWindows.get(id);
+    if (window && !window.isDestroyed()) window.destroy();
+    petWindows.delete(id);
+    userHidden.delete(id);
+  }
+  if (removed.length && managerWindow && !managerWindow.isDestroyed()) {
+    managerWindow.webContents.send("claudepet:update", managerPayload());
+  }
+}
+
 function createTray() {
   tray = new Tray(trayIconImage());
   tray.setToolTip("ClaudePet Claude Code 桌宠");
   tray.setContextMenu(
     Menu.buildFromTemplate([
-      {
-        label: "显示桌宠",
-        click: () => {
-          userHidden = false;
-          if (petWindow) petWindow.showInactive();
-        }
-      },
-      {
-        label: "隐藏桌宠",
-        click: () => {
-          userHidden = true;
-          if (petWindow) petWindow.hide();
-        }
-      },
+      { label: "显示所有桌宠", click: () => showAllPets() },
+      { label: "隐藏所有桌宠", click: () => hideAllPets() },
       { label: "打开设置", icon: menuIconImage(), click: showManager },
       { type: "separator" },
       {
@@ -281,8 +489,8 @@ function createTray() {
         checked: Boolean(config.alwaysOnTop),
         click: (item) => {
           config = saveConfig({ alwaysOnTop: item.checked });
-          applyWindowConfig();
-          broadcast();
+          applyConfigToAllWindows();
+          broadcastConfigChange();
         }
       },
       { label: "退出", click: () => app.quit() }
@@ -291,41 +499,84 @@ function createTray() {
   tray.on("double-click", showManager);
 }
 
+function findSessionForWebContents(webContents) {
+  for (const [id, window] of petWindows.entries()) {
+    if (!window.isDestroyed() && window.webContents === webContents) return id;
+  }
+  return null;
+}
+
 function registerIpc() {
-  ipcMain.handle("claudepet:get-initial", () => rendererPayload());
+  ipcMain.handle("claudepet:get-initial", (event) => {
+    const sessionId = findSessionForWebContents(event.sender);
+    if (sessionId) return rendererPayloadFor(sessionId);
+    return managerPayload();
+  });
   ipcMain.handle("claudepet:update-config", (_event, patch) => {
     config = saveConfig(patch || {});
-    applyWindowConfig();
-    broadcast();
-    return rendererPayload();
+    applyConfigToAllWindows();
+    broadcastConfigChange();
+    return managerPayload();
   });
   ipcMain.handle("claudepet:save-pet-manifest", (_event, petId, patch) => {
     const pet = savePetManifest(petId, patch || {});
-    broadcast();
+    broadcastConfigChange();
     return pet;
   });
   ipcMain.handle("claudepet:open-manager", () => {
     showManager();
     return true;
   });
-  ipcMain.handle("claudepet:hide-pet", () => {
-    userHidden = true;
-    if (petWindow) petWindow.hide();
+  ipcMain.handle("claudepet:hide-pet", (event) => {
+    const sessionId = findSessionForWebContents(event.sender);
+    if (sessionId) {
+      userHidden.add(sessionId);
+      const window = petWindows.get(sessionId);
+      if (window && !window.isDestroyed()) window.hide();
+    }
     return true;
   });
-  ipcMain.handle("claudepet:drag-window", (_event, delta) => {
-    if (!petWindow || petWindow.isDestroyed()) return false;
+  ipcMain.handle("claudepet:toggle-panel", (event) => {
+    const sessionId = findSessionForWebContents(event.sender);
+    if (!sessionId) return false;
+    const next = !effectivePanelVisibilityFor(sessionId);
+    const panelVisibility = { ...(config.panelVisibility || {}), [sessionId]: next };
+    config = saveConfig({ panelVisibility });
+    broadcastSession(sessionId);
+    return next;
+  });
+  ipcMain.handle("claudepet:set-session-pet", (event, petId) => {
+    const sessionId = findSessionForWebContents(event.sender);
+    if (!sessionId || !petId) return false;
+    const known = listPets().some((pet) => pet.id === petId);
+    if (!known) return false;
+    const selectedPets = { ...(config.selectedPets || {}), [sessionId]: petId };
+    config = saveConfig({ selectedPets });
+    broadcastSession(sessionId);
+    return true;
+  });
+  ipcMain.handle("claudepet:close-pet", (event) => {
+    const sessionId = findSessionForWebContents(event.sender);
+    if (sessionId) closePetWindow(sessionId, { dropSession: true });
+    return true;
+  });
+  ipcMain.handle("claudepet:drag-window", (event, delta) => {
+    const sessionId = findSessionForWebContents(event.sender);
+    const window = sessionId ? petWindows.get(sessionId) : null;
+    if (!window || window.isDestroyed()) return false;
     const dx = Math.round(Number(delta && delta.dx) || 0);
     const dy = Math.round(Number(delta && delta.dy) || 0);
     if (!dx && !dy) return true;
-    const [x, y] = petWindow.getPosition();
-    petWindow.setPosition(x + dx, y + dy, false);
+    const [x, y] = window.getPosition();
+    window.setPosition(x + dx, y + dy, false);
     return true;
   });
-  ipcMain.handle("claudepet:set-passthrough", (_event, ignore) => {
-    if (!petWindow || petWindow.isDestroyed()) return false;
-    if (ignore) petWindow.setIgnoreMouseEvents(true, { forward: true });
-    else petWindow.setIgnoreMouseEvents(false);
+  ipcMain.handle("claudepet:set-passthrough", (event, ignore) => {
+    const sessionId = findSessionForWebContents(event.sender);
+    const window = sessionId ? petWindows.get(sessionId) : null;
+    if (!window || window.isDestroyed()) return false;
+    if (ignore) window.setIgnoreMouseEvents(true, { forward: true });
+    else window.setIgnoreMouseEvents(false);
     return true;
   });
   ipcMain.handle("claudepet:quit-app", () => {
@@ -341,6 +592,13 @@ function registerIpc() {
   });
 }
 
+function hydrateSessionsFromDisk() {
+  const stored = listSessions();
+  for (const entry of stored) {
+    sessions.set(entry.sessionId, entry.state);
+  }
+}
+
 async function boot() {
   try {
     const retention = Number(config.stats && config.stats.retentionDays);
@@ -348,38 +606,42 @@ async function boot() {
   } catch (error) {
     if (process.env.CLAUDEPET_DEBUG) console.error("[claudepet] usage prune failed", error);
   }
+  hydrateSessionsFromDisk();
   registerIpc();
-  createPetWindow();
+  for (const id of sessions.keys()) {
+    ensurePetWindow(id);
+  }
+  if (petWindows.size === 0) {
+    ensurePetWindow(DEFAULT_SESSION_ID);
+  }
   createManagerWindow();
   createTray();
   bridge = await startBridgeServer({
-    getState: rendererPayload,
+    getState: managerPayload,
     onEvent: handleBridgeEvent,
     onConfig: (patch) => {
       config = saveConfig(patch || {});
-      applyWindowConfig();
-      broadcast();
-      return rendererPayload();
+      applyConfigToAllWindows();
+      broadcastConfigChange();
+      return managerPayload();
     }
   });
-  broadcast();
+  pruneTimer = setInterval(pruneInactiveSessions, SESSION_PRUNE_INTERVAL_MS);
+  broadcastConfigChange();
 }
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (petWindow && !petWindow.isDestroyed()) {
-      userHidden = false;
-      if (!petWindow.isVisible()) petWindow.showInactive();
-      petWindow.focus();
-    }
+    showAllPets();
   });
   app.whenReady().then(boot);
 }
 
 app.on("before-quit", () => {
   app.isQuitting = true;
+  if (pruneTimer) clearInterval(pruneTimer);
   if (bridge) bridge.close();
 });
 

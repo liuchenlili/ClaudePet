@@ -1,22 +1,66 @@
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
 function readJson(file, fallback = null) {
+  let text;
   try {
-    return JSON.parse(fs.readFileSync(file, "utf8"));
+    text = fs.readFileSync(file, "utf8");
   } catch (error) {
     if (error && error.code === "ENOENT") return fallback;
     throw error;
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    if (process.env.CLAUDEPET_DEBUG) {
+      console.error(`[claudepet] corrupt JSON at ${file}: ${error.message}`);
+    }
+    try {
+      const quarantine = `${file}.corrupt-${Date.now()}`;
+      fs.renameSync(file, quarantine);
+    } catch {
+      // Best-effort quarantine; ignore failures.
+    }
+    return fallback;
+  }
+}
+
+function atomicReplace(tmp, file) {
+  const transient = new Set(["EPERM", "EACCES", "EBUSY", "ENOTEMPTY"]);
+  let attempt = 0;
+  for (;;) {
+    try {
+      fs.renameSync(tmp, file);
+      return;
+    } catch (error) {
+      attempt += 1;
+      if (attempt >= 5 || !transient.has(error && error.code)) throw error;
+      const delay = 5 * attempt;
+      const end = Date.now() + delay;
+      while (Date.now() < end) {
+        // Busy-wait briefly — rename retries on Windows when another
+        // process is mid-replace on the same path.
+      }
+    }
   }
 }
 
 function writeJson(file, data) {
   ensureDir(path.dirname(file));
-  fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+  const payload = `${JSON.stringify(data, null, 2)}\n`;
+  const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+  fs.writeFileSync(tmp, payload, "utf8");
+  try {
+    atomicReplace(tmp, file);
+  } catch (error) {
+    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+    throw error;
+  }
 }
 
 function mergeDeep(base, patch) {
