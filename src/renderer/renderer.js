@@ -63,7 +63,16 @@ const ICONS = {
   refresh: '<path d="M20 12a8 8 0 0 1-14.6 4.5"/><path d="M4 17v-5h5"/><path d="M4 12A8 8 0 0 1 18.6 7.5"/><path d="M20 7v5h-5"/>',
   check: '<path d="m5 12 4 4 10-10"/>',
   alert: '<path d="M12 8v5"/><path d="M12 17h.01"/><path d="M10.3 4.8 2.6 18a2 2 0 0 0 1.7 3h15.4a2 2 0 0 0 1.7-3L13.7 4.8a2 2 0 0 0-3.4 0Z"/>',
-  spark: '<path d="M12 3l1.4 5.1L18 10l-4.6 1.9L12 17l-1.4-5.1L6 10l4.6-1.9L12 3Z"/><path d="M19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14Z"/>'
+  spark: '<path d="M12 3l1.4 5.1L18 10l-4.6 1.9L12 17l-1.4-5.1L6 10l4.6-1.9L12 3Z"/><path d="M19 14l.7 2.3L22 17l-2.3.7L19 20l-.7-2.3L16 17l2.3-.7L19 14Z"/>',
+  tag: '<path d="M20.5 13.5 13.5 20.5a2 2 0 0 1-2.8 0L3 12.8V4h8.8l8.7 8.7a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1"/>',
+  text: '<path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h16"/>',
+  ruler: '<path d="M4 17.5 17.5 4l2.5 2.5L6.5 20H4v-2.5Z"/><path d="m14 7 3 3"/><path d="m11.5 9.5 1.5 1.5"/><path d="m9 12 3 3"/>',
+  columns: '<path d="M5 4h14"/><path d="M5 20h14"/><rect x="6" y="7" width="3.5" height="10"/><rect x="10.25" y="7" width="3.5" height="10"/><rect x="14.5" y="7" width="3.5" height="10"/>',
+  zoom: '<circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/><path d="M11 8v6"/><path d="M8 11h6"/>',
+  anchor: '<path d="M12 3v18"/><path d="M8 7a4 4 0 1 1 8 0c0 2-1.6 3.3-4 3.3S8 9 8 7Z"/><path d="M5 15c1.5 4 5.3 6 7 6s5.5-2 7-6"/><path d="M3 15h4"/><path d="M17 15h4"/>',
+  clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  eyeOff: '<path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.3 10.3 0 0 1 12 4c5 0 8.5 4.5 9.5 8a12.7 12.7 0 0 1-2.3 3.8"/><path d="M6.6 6.7C4.5 8 3.1 10.1 2.5 12c1 3.5 4.5 8 9.5 8 1.4 0 2.7-.3 3.8-.9"/>',
+  power: '<path d="M12 3v8"/><path d="M7.1 6.9a7 7 0 1 0 9.8 0"/>'
 };
 
 function icon(name, label = "") {
@@ -371,23 +380,63 @@ function renderPetView() {
             <div class="detail-row"><span>花费</span><strong>$${Number(cost.totalCostUsd || 0).toFixed(4)}</strong></div>
           </div>
           <div class="speech-actions">
-            <button data-action="manager">设置</button>
-            <button data-action="hide">隐藏</button>
-            <button data-action="quit">退出</button>
+            <button data-action="manager">${icon("settings", "设置")}</button>
+            <button data-action="hide">${icon("eyeOff", "隐藏")}</button>
+            <button data-action="quit">${icon("power", "关闭")}</button>
           </div>
         </div>
       </div>
+      <div class="pet-context-menu" data-pet-context-menu data-clickable hidden role="menu" aria-label="桌宠菜单">
+        <button data-context-action="manager" role="menuitem">${icon("settings", "设置")}</button>
+        <button data-context-action="hide" role="menuitem">${icon("eyeOff", "隐藏")}</button>
+        <button class="danger" data-context-action="quit" role="menuitem">${icon("power", "关闭")}</button>
+      </div>
     </div>
   `;
-  $("[data-action='manager']")?.addEventListener("click", () => window.claudepet.openManager());
-  $("[data-action='hide']")?.addEventListener("click", () => window.claudepet.hidePet());
-  $("[data-action='quit']")?.addEventListener("click", () => {
-    if (confirm("退出 ClaudePet 桌宠？")) window.claudepet.quitApp();
+  $("[data-action='manager']")?.addEventListener("click", () => runPetAction("manager"));
+  $("[data-action='hide']")?.addEventListener("click", () => runPetAction("hide"));
+  $("[data-action='quit']")?.addEventListener("click", () => runPetAction("quit", { confirm: true }));
+  document.querySelectorAll("[data-context-action]").forEach((button) => {
+    button.addEventListener("click", () => runPetAction(button.dataset.contextAction));
   });
   $("[data-action='toggle-details']")?.addEventListener("click", () => {
     model.ui.expanded = !model.ui.expanded;
     render();
   });
+}
+
+function runPetAction(action, options = {}) {
+  hidePetContextMenu();
+  if (action === "manager") {
+    window.claudepet.openManager();
+  } else if (action === "hide") {
+    window.claudepet.hidePet();
+  } else if (action === "quit") {
+    if (options.confirm && !confirm("关闭 ClaudePet 桌宠？")) return;
+    window.claudepet.quitApp();
+  }
+}
+
+function hidePetContextMenu() {
+  const menu = $("[data-pet-context-menu]");
+  if (menu) menu.hidden = true;
+}
+
+function showPetContextMenu(event) {
+  const menu = $("[data-pet-context-menu]");
+  if (!menu) return;
+  menu.hidden = false;
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  const rect = menu.getBoundingClientRect();
+  const margin = 8;
+  const maxLeft = Math.max(margin, window.innerWidth - rect.width - margin);
+  const maxTop = Math.max(margin, window.innerHeight - rect.height - margin);
+  const left = Math.min(Math.max(margin, event.clientX), maxLeft);
+  const top = Math.min(Math.max(margin, event.clientY), maxTop);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  menu.querySelector("button")?.focus({ preventScroll: true });
 }
 
 function renderPetCards() {
@@ -535,8 +584,8 @@ function renderUsageSection() {
     <section class="section usage-section">
       ${sectionTitle("chart", "使用统计")}
       <div class="usage-controls">
-        <label class="toggle"><input type="checkbox" ${enabled ? "checked" : ""} data-config-bool="stats.enabled"> 开启统计</label>
-        <label class="usage-retention">保留天数 <input type="number" min="0" max="3650" value="${retentionDays}" data-config-number="stats.retentionDays"></label>
+        <label class="toggle with-toggle-icon">${icon("chart")}<input type="checkbox" ${enabled ? "checked" : ""} data-config-bool="stats.enabled"> <span>开启统计</span></label>
+        <label class="usage-retention">${icon("clock")}<span>保留天数</span><input type="number" min="0" max="3650" value="${retentionDays}" data-config-number="stats.retentionDays"></label>
         <button class="with-icon" data-action="refresh-usage" ${model.usageLoading ? "disabled" : ""}>${icon("refresh", model.usageLoading ? "加载中…" : "刷新")}</button>
       </div>
       ${enabled ? `
@@ -569,7 +618,7 @@ function renderManagerNav() {
       </div>
       <nav class="manager-nav">
         ${MANAGER_TABS.map((tab) => `
-          <button class="manager-tab ${tab.id === model.managerTab ? "active" : ""}" data-manager-tab="${tab.id}">${icon(tab.icon, tab.label)}</button>
+          <button class="manager-tab ${tab.id === model.managerTab ? "active" : ""}" data-manager-tab="${tab.id}" aria-pressed="${tab.id === model.managerTab}" title="${escapeHtml(tab.label)}">${icon(tab.icon, tab.label)}</button>
         `).join("")}
       </nav>
     </header>
@@ -612,22 +661,22 @@ function renderPetsTab(pet) {
       <p class="section-hint">这些字段写进 <code>pet/&lt;id&gt;/pet.json</code>。ID 由文件夹名决定，不可改。</p>
       <div class="form-grid">
         <div class="field">
-          <label>ID</label>
+          <label>${icon("tag", "ID")}</label>
           <input value="${escapeHtml(pet.id)}" disabled>
           <span class="field-hint">宠物文件夹名，作为唯一标识</span>
         </div>
         <div class="field">
-          <label>显示名</label>
+          <label>${icon("text", "显示名")}</label>
           <input value="${escapeHtml(pet.displayName)}" data-manifest-text="displayName">
           <span class="field-hint">对应 manifest 里的 <code>displayName</code></span>
         </div>
         <div class="field" style="grid-column: 1 / -1">
-          <label>描述</label>
+          <label>${icon("fields", "描述")}</label>
           <input value="${escapeHtml(pet.description)}" data-manifest-text="description">
           <span class="field-hint">对应 manifest 里的 <code>description</code></span>
         </div>
         <div class="field">
-          <label>类型</label>
+          <label>${icon("folder", "类型")}</label>
           <input value="${escapeHtml(pet.kind)}" data-manifest-text="kind">
           <span class="field-hint">分类标签，例如 character / mascot，目前仅作为元数据</span>
         </div>
@@ -639,37 +688,37 @@ function renderPetsTab(pet) {
       <p class="section-hint">桌宠是一张大图按网格切成的小帧。下面参数告诉程序怎么切。当前图片尺寸 <strong>${escapeHtml(pet.imageWidth)}×${escapeHtml(pet.imageHeight)} px</strong>，理论上应满足 <code>frameWidth × columns ≤ 图宽</code> 且 <code>frameHeight × rows ≤ 图高</code>。</p>
       <div class="form-grid">
         <div class="field">
-          <label>单帧宽度（px）</label>
+          <label>${icon("ruler", "单帧宽度（px）")}</label>
           <input type="number" min="1" step="1" value="${pet.frameWidth}" data-manifest-number="frameWidth">
           <span class="field-hint">每个动画帧的像素宽度</span>
         </div>
         <div class="field">
-          <label>单帧高度（px）</label>
+          <label>${icon("ruler", "单帧高度（px）")}</label>
           <input type="number" min="1" step="1" value="${pet.frameHeight}" data-manifest-number="frameHeight">
           <span class="field-hint">每个动画帧的像素高度</span>
         </div>
         <div class="field">
-          <label>横向帧数</label>
+          <label>${icon("columns", "横向帧数")}</label>
           <input type="number" min="1" step="1" value="${pet.columns}" data-manifest-number="columns">
           <span class="field-hint">网格列数，决定 frame 索引怎么换算 x 坐标</span>
         </div>
         <div class="field">
-          <label>纵向帧数</label>
+          <label>${icon("grid", "纵向帧数")}</label>
           <input type="number" min="1" step="1" value="${pet.rows}" data-manifest-number="rows">
           <span class="field-hint">网格行数，决定最大可用帧 = columns × rows</span>
         </div>
         <div class="field">
-          <label>预览放大倍数</label>
+          <label>${icon("zoom", "预览放大倍数")}</label>
           <input type="number" min="0.1" max="8" step="0.01" value="${pet.defaultScale}" data-manifest-number="defaultScale">
           <span class="field-hint">仅影响 Manager 大预览。桌宠窗口的缩放在「外观」标签里调</span>
         </div>
         <div class="field">
-          <label>锚点 X（0~1）</label>
+          <label>${icon("anchor", "锚点 X（0~1）")}</label>
           <input type="number" min="0" max="1" step="0.01" value="${anchor.x}" data-manifest-anchor="x">
           <span class="field-hint">渲染锚点横向位置：0=左边，0.5=居中，1=右边</span>
         </div>
         <div class="field">
-          <label>锚点 Y（0~1）</label>
+          <label>${icon("anchor", "锚点 Y（0~1）")}</label>
           <input type="number" min="0" max="1" step="0.01" value="${anchor.y}" data-manifest-anchor="y">
           <span class="field-hint">渲染锚点纵向位置：0=顶，1=底（脚踩地面通常用 1）</span>
         </div>
@@ -702,16 +751,17 @@ function renderAnimationRow(meta, anim) {
       </div>
       <div class="anim-fields">
         <div class="field anim-frames">
-          <label>frames</label>
+          <label>${icon("grid", "frames")}</label>
           <input value="${escapeHtml(framesStr)}" data-anim="${escapeHtml(meta.key)}" data-anim-key="frames" placeholder="0, 1, 2, 3">
         </div>
         <div class="field anim-fps">
-          <label>fps</label>
+          <label>${icon("clock", "fps")}</label>
           <input type="number" min="1" max="60" step="1" value="${safe.fps}" data-anim="${escapeHtml(meta.key)}" data-anim-key="fps">
         </div>
-        <label class="toggle anim-loop">
+        <label class="toggle with-toggle-icon anim-loop">
+          ${icon("refresh")}
           <input type="checkbox" ${safe.loop ? "checked" : ""} data-anim="${escapeHtml(meta.key)}" data-anim-key="loop">
-          循环
+          <span>循环</span>
         </label>
       </div>
     </div>
@@ -1081,7 +1131,7 @@ function isInteractiveTarget(x, y) {
   const stack = document.elementsFromPoint(x, y);
   for (const node of stack) {
     if (!node || !(node instanceof Element)) continue;
-    if (node.closest("[data-pet], [data-clickable]")) return true;
+    if (node.closest("[data-pet], [data-clickable], [data-pet-context-menu]")) return true;
   }
   return false;
 }
@@ -1095,6 +1145,21 @@ function setPassthrough(ignore) {
 }
 
 function installDragHandlers() {
+  window.addEventListener("contextmenu", (event) => {
+    if (view !== "pet") return;
+    const onMenu = event.target.closest("[data-pet-context-menu]");
+    if (onMenu) {
+      event.preventDefault();
+      return;
+    }
+    const onPet = event.target.closest("[data-pet], .pet-stage");
+    if (!onPet) return;
+    event.preventDefault();
+    model.drag.active = false;
+    setPassthrough(false);
+    showPetContextMenu(event);
+  });
+
   window.addEventListener("pointermove", (event) => {
     if (view !== "pet") return;
     if (model.drag.active) {
@@ -1114,6 +1179,9 @@ function installDragHandlers() {
 
   window.addEventListener("pointerdown", (event) => {
     if (view !== "pet") return;
+    const onMenu = event.target.closest("[data-pet-context-menu]");
+    if (!onMenu) hidePetContextMenu();
+    if (onMenu) return;
     if (event.button !== 0) return;
     const onPet = event.target.closest("[data-pet], .pet-stage");
     const onClickable = event.target.closest("[data-clickable]");
@@ -1135,6 +1203,12 @@ function installDragHandlers() {
   });
   window.addEventListener("pointerleave", () => {
     if (!model.drag.active) setPassthrough(true);
+  });
+  window.addEventListener("keydown", (event) => {
+    if (view === "pet" && event.key === "Escape") hidePetContextMenu();
+  });
+  window.addEventListener("blur", () => {
+    if (view === "pet") hidePetContextMenu();
   });
 }
 
