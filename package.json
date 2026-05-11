@@ -1,5 +1,6 @@
 {
   "name": "claudepet",
+  "productName": "ClaudePet",
   "version": "0.1.0",
   "private": true,
   "description": "ClaudePet — Claude Code desktop pet with statusLine and hook integration.",

@@ -6,6 +6,14 @@ const { listPets, savePetManifest } = require("../shared/pets");
 const { loadRuntimeState, saveRuntimeState, appendHistory } = require("../shared/runtime-state");
 const { recordSnapshot, snapshotFromState, projectKeyFrom, pruneOldData, getUsageOverview } = require("../shared/usage");
 
+const APP_NAME = "ClaudePet";
+const APP_USER_MODEL_ID = "com.liuchenlili.ClaudePet";
+
+app.setName(APP_NAME);
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_USER_MODEL_ID);
+}
+
 let petWindow = null;
 let managerWindow = null;
 let tray = null;
@@ -103,6 +111,7 @@ function maybeNotify(status) {
     new Notification({
       title: status.label || "Claude Code needs attention",
       body: status.detail || "Open Claude Code to continue.",
+      icon: windowIconPath(),
       silent: !(config.notifications && config.notifications.sound)
     }).show();
   }
@@ -129,6 +138,26 @@ function assetPath(name) {
 
 function windowIconPath() {
   return process.platform === "win32" ? assetPath("app-icon.ico") : assetPath("app-icon.png");
+}
+
+function quoteCommandArg(value) {
+  return `"${String(value).replace(/"/g, '\\"')}"`;
+}
+
+function relaunchCommand() {
+  if (!process.defaultApp) return quoteCommandArg(process.execPath);
+  return `${quoteCommandArg(process.execPath)} ${quoteCommandArg(app.getAppPath())}`;
+}
+
+function applyWindowAppDetails(window) {
+  if (process.platform !== "win32" || !window || window.isDestroyed()) return;
+  window.setIcon(windowIconPath());
+  window.setAppDetails({
+    appId: APP_USER_MODEL_ID,
+    appIconPath: windowIconPath(),
+    relaunchCommand: relaunchCommand(),
+    relaunchDisplayName: APP_NAME
+  });
 }
 
 function trayIconImage() {
@@ -176,6 +205,7 @@ function createPetWindow() {
     hasShadow: false,
     show: false,
     icon: windowIconPath(),
+    title: APP_NAME,
     alwaysOnTop: Boolean(config.alwaysOnTop),
     webPreferences: {
       preload: path.join(__dirname, "..", "preload.js"),
@@ -183,6 +213,7 @@ function createPetWindow() {
       nodeIntegration: false
     }
   });
+  applyWindowAppDetails(petWindow);
   petWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"), { query: { view: "pet" } });
   petWindow.once("ready-to-show", () => {
     applyWindowConfig();
@@ -207,6 +238,7 @@ function createManagerWindow() {
       nodeIntegration: false
     }
   });
+  applyWindowAppDetails(managerWindow);
   managerWindow.loadFile(path.join(__dirname, "..", "renderer", "index.html"), { query: { view: "manager" } });
   managerWindow.on("close", (event) => {
     if (!app.isQuitting) {
@@ -310,9 +342,6 @@ function registerIpc() {
 }
 
 async function boot() {
-  if (process.platform === "win32") {
-    app.setAppUserModelId("claudepet");
-  }
   try {
     const retention = Number(config.stats && config.stats.retentionDays);
     if (Number.isFinite(retention) && retention > 0) pruneOldData(retention);
