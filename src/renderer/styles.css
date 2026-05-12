@@ -4,6 +4,11 @@
   --panel: rgba(25, 29, 36, 0.9);
   --panel-solid: #191d24;
   --panel-2: #222832;
+  --header: #171b22;
+  --input-bg: #101319;
+  --button-bg: #252b35;
+  --button-hover-bg: #303744;
+  --hover-overlay: rgba(255, 255, 255, 0.04);
   --text: #f5f1e8;
   --muted: #a8b0bd;
   --line: rgba(255, 255, 255, 0.12);
@@ -22,6 +27,11 @@
   --panel: rgba(255, 255, 255, 0.94);
   --panel-solid: #ffffff;
   --panel-2: #eef0f4;
+  --header: #ffffff;
+  --input-bg: #ffffff;
+  --button-bg: #ffffff;
+  --button-hover-bg: #eef0f4;
+  --hover-overlay: rgba(0, 0, 0, 0.05);
   --text: #1c2230;
   --muted: #5b6373;
   --line: rgba(0, 0, 0, 0.1);
@@ -32,10 +42,6 @@
   --green: #4a8b2c;
   --red: #c6342b;
   --violet: #6b4ed1;
-}
-
-:root.theme-light button {
-  background: #ffffff;
 }
 
 .theme-switcher {
@@ -92,7 +98,7 @@ textarea {
 
 button {
   border: 1px solid var(--line);
-  background: #252b35;
+  background: var(--button-bg);
   color: var(--text);
   border-radius: 6px;
   padding: 7px 10px;
@@ -104,7 +110,7 @@ button {
 }
 
 button:hover {
-  background: #303744;
+  background: var(--button-hover-bg);
 }
 
 .icon {
@@ -786,7 +792,7 @@ button:hover {
   gap: 16px;
   padding: 18px 24px 0;
   border-bottom: 1px solid var(--line);
-  background: #171b22;
+  background: var(--header);
   flex-wrap: wrap;
 }
 
@@ -836,7 +842,7 @@ button:hover {
 
 .manager-tab:hover {
   color: var(--text);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--hover-overlay);
 }
 
 .manager-tab.active {
@@ -1000,7 +1006,7 @@ button:hover {
 .field select {
   width: 100%;
   border: 1px solid var(--line);
-  background: #101319;
+  background: var(--input-bg);
   color: var(--text);
   border-radius: 6px;
   padding: 8px;
@@ -1196,7 +1202,7 @@ button:hover {
 .usage-retention input {
   width: 64px;
   border: 1px solid var(--line);
-  background: #101319;
+  background: var(--input-bg);
   color: var(--text);
   border-radius: 6px;
   padding: 4px 6px;
