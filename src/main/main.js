@@ -533,7 +533,9 @@ function showManager() {
 }
 
 function showAllPets() {
-  if (petWindows.size === 0) ensurePetWindow(DEFAULT_SESSION_ID);
+  // Only surface windows that already exist — never conjure a placeholder
+  // pet, otherwise booting via auto-launch or second-instance dispatch leaves
+  // a stray __default__ window with no live session behind it.
   for (const [id, window] of petWindows.entries()) {
     userHidden.delete(id);
     if (window && !window.isDestroyed()) window.showInactive();
@@ -701,14 +703,13 @@ async function boot() {
   } catch (error) {
     if (process.env.CLAUDEPET_DEBUG) console.error("[claudepet] usage prune failed", error);
   }
+  // Drop stale sessions from disk before hydrating so windows are never
+  // recreated for terminals that closed long ago. Surviving entries stay in
+  // memory so /clear rebinding can find them, but no windows are auto-spawned
+  // on boot — pets only appear once a live CLI event arrives for them.
+  pruneStaleSessions(SESSION_INACTIVITY_MS);
   hydrateSessionsFromDisk();
   registerIpc();
-  for (const id of sessions.keys()) {
-    ensurePetWindow(id);
-  }
-  if (petWindows.size === 0) {
-    ensurePetWindow(DEFAULT_SESSION_ID);
-  }
   createManagerWindow();
   createTray();
   bridge = await startBridgeServer({
@@ -728,8 +729,10 @@ async function boot() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
+  app.on("second-instance", (_event, argv) => {
     showAllPets();
+    const fromCliAutoLaunch = Array.isArray(argv) && argv.includes("--background");
+    if (!fromCliAutoLaunch && petWindows.size === 0) showManager();
   });
   app.whenReady().then(boot);
 }
