@@ -18,8 +18,9 @@ const { recordSnapshot, snapshotFromState, projectKeyFrom, pruneOldData, getUsag
 
 const APP_NAME = "ClaudePet";
 const APP_USER_MODEL_ID = "com.liuchenlili.ClaudePet";
-const SESSION_INACTIVITY_MS = 60 * 60 * 1000;
-const SESSION_PRUNE_INTERVAL_MS = 5 * 60 * 1000;
+const SESSION_INACTIVITY_MS = 15 * 60 * 1000;
+const SESSION_PRUNE_INTERVAL_MS = 60 * 1000;
+const SESSION_REBIND_WINDOW_MS = 5 * 60 * 1000;
 const PET_WINDOW_OFFSET = 36;
 
 app.setName(APP_NAME);
@@ -178,6 +179,80 @@ function sessionIdFromEvent(event) {
   return DEFAULT_SESSION_ID;
 }
 
+function cwdFromEvent(event) {
+  if (!event) return "";
+  if (event.type === "statusline") {
+    const fromState = event.state && event.state.session && event.state.session.cwd;
+    if (fromState) return fromState;
+    const raw = event.raw || {};
+    return (raw.workspace && raw.workspace.current_dir)
+      || (raw.workspace && raw.workspace.project_dir)
+      || raw.cwd
+      || "";
+  }
+  if (event.type === "hook") {
+    const raw = event.raw || {};
+    return (raw.workspace && raw.workspace.current_dir)
+      || (raw.workspace && raw.workspace.project_dir)
+      || raw.cwd
+      || "";
+  }
+  return "";
+}
+
+function findRebindCandidate(newSessionId, cwd) {
+  if (!cwd || !newSessionId) return null;
+  if (sessions.has(newSessionId)) return null;
+  const now = Date.now();
+  let best = null;
+  let bestTime = 0;
+  for (const [id, state] of sessions.entries()) {
+    if (id === newSessionId) continue;
+    if (id === DEFAULT_SESSION_ID) continue;
+    const stateCwd = state.session && state.session.cwd;
+    if (stateCwd !== cwd) continue;
+    const last = Date.parse(state.lastEventAt || state.updatedAt || 0);
+    if (!Number.isFinite(last)) continue;
+    if (now - last > SESSION_REBIND_WINDOW_MS) continue;
+    if (last > bestTime) {
+      bestTime = last;
+      best = id;
+    }
+  }
+  return best;
+}
+
+function rebindSession(oldId, newId) {
+  if (!oldId || !newId || oldId === newId) return;
+  const state = sessions.get(oldId);
+  if (state) sessions.set(newId, state);
+  sessions.delete(oldId);
+  const window = petWindows.get(oldId);
+  if (window) {
+    petWindows.set(newId, window);
+    petWindows.delete(oldId);
+  }
+  if (userHidden.has(oldId)) {
+    userHidden.add(newId);
+    userHidden.delete(oldId);
+  }
+  const timer = positionSaveTimers.get(oldId);
+  if (timer) {
+    positionSaveTimers.set(newId, timer);
+    positionSaveTimers.delete(oldId);
+  }
+  const overrides = { ...(config.selectedPets || {}) };
+  const positions = { ...(config.positions || {}) };
+  const panelVisibility = { ...(config.panelVisibility || {}) };
+  let changed = false;
+  if (oldId in overrides) { overrides[newId] = overrides[oldId]; delete overrides[oldId]; changed = true; }
+  if (oldId in positions) { positions[newId] = positions[oldId]; delete positions[oldId]; changed = true; }
+  if (oldId in panelVisibility) { panelVisibility[newId] = panelVisibility[oldId]; delete panelVisibility[oldId]; changed = true; }
+  if (changed) config = saveConfig({ selectedPets: overrides, positions, panelVisibility });
+  removeSession(oldId);
+  if (state) saveSessionState(newId, state);
+}
+
 function updateSessionFromEvent(sessionId, event) {
   const id = resolveSessionId(sessionId);
   const current = getSessionState(id);
@@ -243,9 +318,29 @@ function maybeNotify(status) {
   }
 }
 
+function isSessionEndEvent(event) {
+  if (!event || event.type !== "hook") return false;
+  const name = event.raw && event.raw.hook_event_name;
+  return name === "SessionEnd";
+}
+
 async function handleBridgeEvent(event) {
   recordUsageFromEvent(event);
   const sessionId = resolveSessionId(sessionIdFromEvent(event));
+  if (isSessionEndEvent(event)) {
+    closePetWindow(sessionId, { dropSession: true });
+    if (managerWindow && !managerWindow.isDestroyed()) {
+      managerWindow.webContents.send("claudepet:update", managerPayload());
+    }
+    return;
+  }
+  // Claude Code's /clear starts a brand-new session_id while staying in the
+  // same cwd. If a pet for the previous session is still active here, hand
+  // its window over to the new session instead of spawning another window.
+  if (sessionId !== DEFAULT_SESSION_ID && !sessions.has(sessionId)) {
+    const candidate = findRebindCandidate(sessionId, cwdFromEvent(event));
+    if (candidate) rebindSession(candidate, sessionId);
+  }
   updateSessionFromEvent(sessionId, event);
   ensurePetWindow(sessionId);
   broadcastSession(sessionId);
