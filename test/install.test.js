@@ -31,11 +31,47 @@ test("local install writes settings.local and preserves existing user statusLine
   const result = installSettings({ scope: "local", cwd: env.cwd, preserveStatusLine: true });
   const settings = readJson(result.settingsFile);
   const config = loadConfig();
+  const permissionHook = settings.hooks.PermissionRequest[0].hooks[0];
+  const toolHook = settings.hooks.PreToolUse[0].hooks[0];
 
   assert.equal(path.basename(result.settingsFile), "settings.local.json");
-  assert.match(settings.statusLine.command, /claudepet\.js" "statusline"/);
+  assert.match(settings.statusLine.command, /claudepet\.js['"]?\s+['"]?statusline/);
   assert.ok(settings.hooks.PermissionRequest.length > 0);
+  assert.equal(permissionHook.async, false);
+  assert.equal(permissionHook.timeout, 300);
+  assert.equal(toolHook.async, true);
+  assert.equal(toolHook.timeout, 5);
   assert.equal(config.legacyStatusLine.command, '"node" "legacy-hud.js"');
+});
+
+test("reinstall migrates existing async permission hook", () => {
+  const env = tempEnv();
+  const settingsFile = path.join(env.cwd, ".claude", "settings.local.json");
+  fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+  fs.writeFileSync(
+    settingsFile,
+    JSON.stringify({
+      hooks: {
+        PermissionRequest: [
+          {
+            matcher: "",
+            hooks: [
+              { type: "command", command: '"node" "/tmp/bin/claudepet.js" "hook"', async: true, timeout: 5 }
+            ]
+          }
+        ]
+      }
+    }, null, 2),
+    "utf8"
+  );
+
+  const result = installSettings({ scope: "local", cwd: env.cwd, preserveStatusLine: false });
+  const settings = readJson(result.settingsFile);
+  const hook = settings.hooks.PermissionRequest[0].hooks[0];
+
+  assert.equal(settings.hooks.PermissionRequest.length, 1);
+  assert.equal(hook.async, false);
+  assert.equal(hook.timeout, 300);
 });
 
 test("uninstall removes claudepet hooks and local statusLine", () => {

@@ -547,6 +547,88 @@ button:hover {
   background: rgba(17, 22, 27, 0.45);
 }
 
+.permission-pending {
+  height: 176px;
+  max-height: 176px;
+}
+
+.permission-pending .speech-output {
+  min-height: 22px;
+}
+
+.permission-actions {
+  display: grid;
+  grid-template-columns: 0.82fr 0.82fr 1.2fr 1.2fr;
+  gap: 5px;
+  margin-top: 8px;
+  flex: 0 0 auto;
+}
+
+.permission-button {
+  min-width: 0;
+  padding: 6px 7px;
+  border: 2px solid rgba(17, 22, 27, 0.88);
+  border-radius: 999px;
+  color: #11161b;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 0 rgba(17, 22, 27, 0.26);
+  transform: translateY(0) rotate(-1deg);
+  transition: transform 90ms ease, box-shadow 90ms ease, filter 90ms ease;
+}
+
+.permission-button:hover:not(:disabled) {
+  filter: saturate(1.12) brightness(1.04);
+  transform: translateY(-1px) rotate(-1deg);
+  box-shadow: 0 5px 0 rgba(17, 22, 27, 0.24);
+}
+
+.permission-button:active:not(:disabled) {
+  transform: translateY(3px) rotate(-1deg);
+  box-shadow: 0 1px 0 rgba(17, 22, 27, 0.3);
+}
+
+.permission-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  filter: grayscale(0.45);
+}
+
+.permission-button.allow {
+  background: var(--green);
+}
+
+.permission-button.deny {
+  background: var(--red);
+}
+
+.permission-button.session {
+  background: var(--amber);
+  transform: translateY(0) rotate(1deg);
+}
+
+.permission-button.auto {
+  background: var(--violet);
+  transform: translateY(0) rotate(-1deg);
+}
+
+.permission-button.session:hover:not(:disabled) {
+  transform: translateY(-1px) rotate(1deg);
+}
+
+.permission-button.session:active:not(:disabled) {
+  transform: translateY(3px) rotate(1deg);
+}
+
+.permission-button.auto:hover:not(:disabled) {
+  transform: translateY(-1px) rotate(-1deg);
+}
+
+.permission-button.auto:active:not(:disabled) {
+  transform: translateY(3px) rotate(-1deg);
+}
+
 .speech-details {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

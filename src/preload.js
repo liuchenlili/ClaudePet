@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld("claudepet", {
   hidePet: () => ipcRenderer.invoke("claudepet:hide-pet"),
   closePet: () => ipcRenderer.invoke("claudepet:close-pet"),
   setSessionPet: (petId) => ipcRenderer.invoke("claudepet:set-session-pet", petId),
+  respondPermission: (payload) => ipcRenderer.invoke("claudepet:respond-permission", payload),
   togglePanel: () => ipcRenderer.invoke("claudepet:toggle-panel"),
   dragWindow: (delta) => ipcRenderer.invoke("claudepet:drag-window", delta),
   setPassthrough: (ignore) => ipcRenderer.invoke("claudepet:set-passthrough", Boolean(ignore)),

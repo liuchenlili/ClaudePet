@@ -347,6 +347,11 @@ function renderPetView() {
   const ctxTone = used > 80 ? "danger" : used > 55 ? "warn" : "context";
   const detailText = status.detail || session.cwd || "";
   const task = taskStatusLine(status, activeSubagent);
+  const pendingPermission = state.pendingPermission || null;
+  const showSpeech = config.showPanel || pendingPermission;
+  const permissionDetail = pendingPermission ? (pendingPermission.detail || detailText || "Claude Code needs permission.") : "";
+  const sessionButtonDisabled = pendingPermission && !pendingPermission.canAutoApprove ? "disabled" : "";
+  const autoYesLabel = state.permissionAutoYes ? "自动Yes中" : "自动Yes";
   $("#app").innerHTML = `
     <div class="pet-shell ${phase} ${model.ui.expanded ? "details-open" : ""}" data-pet-shell>
       <div class="pet-body">
@@ -361,7 +366,7 @@ function renderPetView() {
           ${phase === "phase-done" ? '<div class="complete-burst">DONE</div>' : ""}
           ${phase === "phase-waiting" ? '<div class="attention-badge">!</div>' : ""}
         </div>
-        <div class="speech ${status.attention ? "attention" : ""}" ${model.ui.expanded ? "data-clickable" : ""} ${config.showPanel ? "" : 'style="display:none"'}>
+        <div class="speech ${status.attention ? "attention" : ""} ${pendingPermission ? "permission-pending" : ""}" ${model.ui.expanded || pendingPermission ? "data-clickable" : ""} ${showSpeech ? "" : 'style="display:none"'}>
           <button class="speech-toggle" data-clickable data-action="toggle-details" title="${model.ui.expanded ? "收起" : "展开"}">${model.ui.expanded ? "▴" : "▾"}</button>
           <div class="speech-head">
             <span class="hud-dot ${severityClass(status)}"></span>
@@ -371,8 +376,16 @@ function renderPetView() {
               ${task.detail ? `<span class="task-detail">${escapeHtml(task.detail)}</span>` : ""}
             </span>
           </div>
-          <div class="speech-output-label">输出</div>
-          <div class="speech-output" data-speech-output data-clickable>${escapeHtml(detailText) || "Idle. Waiting for the next task."}</div>
+          <div class="speech-output-label">${pendingPermission ? "权限请求" : "输出"}</div>
+          <div class="speech-output" data-speech-output data-clickable>${escapeHtml(pendingPermission ? permissionDetail : detailText) || "Idle. Waiting for the next task."}</div>
+          ${pendingPermission ? `
+            <div class="permission-actions" data-clickable data-permission-id="${escapeHtml(pendingPermission.id)}">
+              <button class="permission-button allow" data-permission-action="allow">Yes</button>
+              <button class="permission-button deny" data-permission-action="deny">No</button>
+              <button class="permission-button session" data-permission-action="allow_session" ${sessionButtonDisabled}>允许此类</button>
+              <button class="permission-button auto" data-permission-action="auto_yes_session">${escapeHtml(autoYesLabel)}</button>
+            </div>
+          ` : ""}
           <div class="speech-details">
             <div class="detail-row"><span>输入 token</span><strong>${detailValue(compactNumber(tokens.sessionInput ?? tokens.liveInput))}</strong></div>
             <div class="detail-row"><span>输出 token</span><strong>${detailValue(compactNumber(tokens.sessionOutput ?? tokens.liveOutput))}</strong></div>
@@ -426,6 +439,24 @@ function renderPetView() {
         await window.claudepet.setSessionPet(petId);
       } catch (error) {
         // main process will broadcast back on success; failure is silent
+      }
+    });
+  });
+  document.querySelectorAll("[data-permission-action]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const container = button.closest("[data-permission-id]");
+      const requestId = container && container.dataset.permissionId;
+      const action = button.dataset.permissionAction;
+      if (!requestId || !action) return;
+      container.querySelectorAll("button").forEach((item) => {
+        item.disabled = true;
+      });
+      try {
+        await window.claudepet.respondPermission({ requestId, action });
+      } catch (error) {
+        container.querySelectorAll("button").forEach((item) => {
+          item.disabled = false;
+        });
       }
     });
   });

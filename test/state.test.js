@@ -5,6 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const { buildStatusLineState, formatFallbackStatusLine, statusFromHook } = require("../src/shared/state");
+const { buildPendingPermission, buildPermissionHookOutput } = require("../src/shared/permission-response");
 
 test("buildStatusLineState extracts context, git fallback, and transcript usage", () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "claudepet-state-"));
@@ -50,6 +51,8 @@ test("statusFromHook highlights permission and completion events", () => {
   assert.equal(permission.kind, "waiting-permission");
   assert.equal(permission.attention, true);
   assert.equal(permission.animation, "waiting");
+  assert.equal(permission.tool, "Bash");
+  assert.equal(permission.target, "npm test");
 
   const done = statusFromHook({
     hook_event_name: "Stop",
@@ -58,4 +61,50 @@ test("statusFromHook highlights permission and completion events", () => {
   assert.equal(done.kind, "completed");
   assert.equal(done.animation, "success");
   assert.equal(done.attention, true);
+});
+
+test("permission response helpers build safe pending state and hook output", () => {
+  const input = {
+    hook_event_name: "PermissionRequest",
+    tool_name: "Bash",
+    tool_input: { command: "npm test", description: "Run tests" },
+    permission_suggestions: [
+      {
+        type: "addRules",
+        behavior: "allow",
+        destination: "localSettings",
+        rules: [{ toolName: "Bash", ruleContent: "npm test" }]
+      }
+    ]
+  };
+
+  const pending = buildPendingPermission(input, "req-1");
+  assert.equal(pending.id, "req-1");
+  assert.equal(pending.toolName, "Bash");
+  assert.equal(pending.canAutoApprove, true);
+  assert.equal(pending.tool_input, undefined);
+
+  assert.deepEqual(buildPermissionHookOutput(input, "allow"), {
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: { behavior: "allow" }
+    }
+  });
+  assert.deepEqual(buildPermissionHookOutput(input, "deny"), {
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: { behavior: "deny", message: "Denied from ClaudePet." }
+    }
+  });
+  assert.deepEqual(buildPermissionHookOutput(input, "auto_yes_session"), {
+    hookSpecificOutput: {
+      hookEventName: "PermissionRequest",
+      decision: { behavior: "allow" }
+    }
+  });
+
+  const session = buildPermissionHookOutput(input, "allow_session");
+  assert.equal(session.hookSpecificOutput.decision.behavior, "allow");
+  assert.equal(session.hookSpecificOutput.decision.updatedPermissions[0].destination, "session");
+  assert.deepEqual(session.hookSpecificOutput.decision.updatedPermissions[0].rules, input.permission_suggestions[0].rules);
 });

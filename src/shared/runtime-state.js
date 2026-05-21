@@ -21,6 +21,8 @@ const DEFAULT_SESSION_STATE = {
     animation: "idle",
     updatedAt: null
   },
+  pendingPermission: null,
+  permissionAutoYes: false,
   tasks: {},
   history: [],
   activeSubagent: null
@@ -35,6 +37,8 @@ const LEGACY_STATE_KEYS = [
   "git",
   "rateLimits",
   "status",
+  "pendingPermission",
+  "permissionAutoYes",
   "tasks",
   "history",
   "activeSubagent"

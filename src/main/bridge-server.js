@@ -29,6 +29,16 @@ function send(response, statusCode, payload) {
   response.end(body);
 }
 
+function abortSignalFor(request, response) {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  request.on("aborted", abort);
+  response.on("close", () => {
+    if (!response.writableEnded) abort();
+  });
+  return controller.signal;
+}
+
 function authorized(request, token) {
   return request.headers.authorization === `Bearer ${token}`;
 }
@@ -45,6 +55,15 @@ function startBridgeServer(handlers) {
         const event = JSON.parse(await readBody(request));
         await handlers.onEvent(event);
         return send(response, 204);
+      }
+      if (request.method === "POST" && request.url === "/permission-request") {
+        const payload = JSON.parse(await readBody(request));
+        const result = await handlers.onPermissionRequest(payload, { signal: abortSignalFor(request, response) });
+        return send(response, 200, result || {});
+      }
+      if (request.method === "POST" && request.url === "/permission-clear") {
+        const payload = JSON.parse(await readBody(request));
+        return send(response, 200, handlers.onPermissionClear(payload));
       }
       if (request.method === "POST" && request.url === "/config") {
         const patch = JSON.parse(await readBody(request));

@@ -154,8 +154,10 @@ function statusFromHook(input = {}) {
   switch (event) {
     case "UserPromptSubmit":
       return { ...base, kind: "thinking", label: "Reading prompt", detail: input.prompt ? input.prompt.slice(0, 120) : "", animation: "thinking" };
-    case "PermissionRequest":
-      return { ...base, kind: "waiting-permission", label: "Awaiting confirmation", detail: summarizeTool(input), attention: true, severity: "warning", animation: "waiting" };
+    case "PermissionRequest": {
+      const info = describeTool(input);
+      return { ...base, kind: "waiting-permission", label: "Awaiting confirmation", detail: info.summary, tool: info.tool, target: info.target, attention: true, severity: "warning", animation: "waiting" };
+    }
     case "Notification":
       return {
         ...base,
@@ -305,6 +307,7 @@ function formatFallbackStatusLine(state) {
 
 module.exports = {
   buildStatusLineState,
+  describeTool,
   formatFallbackStatusLine,
   statusFromHook
 };

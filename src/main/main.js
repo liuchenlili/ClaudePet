@@ -30,6 +30,7 @@ if (process.platform === "win32") {
 
 const sessions = new Map();
 const petWindows = new Map();
+const pendingPermissionRequests = new Map();
 const userHidden = new Set();
 const positionSaveTimers = new Map();
 let managerWindow = null;
@@ -296,6 +297,110 @@ function updateSessionFromEvent(sessionId, event) {
   next.lastEventAt = next.updatedAt;
   setSessionState(id, next);
   return next;
+}
+
+function setPendingPermission(sessionId, pendingPermission) {
+  const id = resolveSessionId(sessionId);
+  const current = getSessionState(id);
+  const next = {
+    ...current,
+    pendingPermission,
+    updatedAt: new Date().toISOString()
+  };
+  next.lastEventAt = next.updatedAt;
+  setSessionState(id, next);
+  broadcastSession(id);
+}
+
+function restoreHiddenState(sessionId, entry) {
+  if (!entry || !entry.wasHidden) return;
+  const window = petWindows.get(sessionId);
+  userHidden.add(sessionId);
+  if (window && !window.isDestroyed()) window.hide();
+}
+
+function clearPendingPermission(sessionId, requestId, reason = "cleared") {
+  const id = resolveSessionId(sessionId);
+  const entry = pendingPermissionRequests.get(requestId);
+  if (entry) {
+    clearTimeout(entry.timer);
+    pendingPermissionRequests.delete(requestId);
+  }
+  const current = getSessionState(id);
+  if (current.pendingPermission && current.pendingPermission.id === requestId) {
+    const status = current.status && current.status.kind === "waiting-permission"
+      ? { ...current.status, kind: "idle", label: "Claude Code is ready", detail: "", attention: false, severity: "info", animation: "idle", updatedAt: new Date().toISOString() }
+      : current.status;
+    const next = {
+      ...current,
+      status,
+      pendingPermission: null,
+      updatedAt: new Date().toISOString()
+    };
+    next.lastEventAt = next.updatedAt;
+    setSessionState(id, next);
+    broadcastSession(id);
+  }
+  restoreHiddenState(id, entry);
+  return reason;
+}
+
+function clearSessionPendingPermission(sessionId) {
+  const id = resolveSessionId(sessionId);
+  const current = getSessionState(id);
+  if (!current.pendingPermission) return false;
+  const requestId = current.pendingPermission.id;
+  clearPendingPermission(id, requestId, "superseded");
+  return true;
+}
+
+function resolvePermissionRequest(sessionId, requestId, action) {
+  const id = resolveSessionId(sessionId);
+  const entry = pendingPermissionRequests.get(requestId);
+  if (!entry || entry.sessionId !== id) return false;
+  if (!["allow", "deny", "allow_session", "auto_yes_session"].includes(action)) return false;
+  const resolve = entry.resolve;
+  if (action === "auto_yes_session") {
+    const current = getSessionState(id);
+    setSessionState(id, { ...current, permissionAutoYes: true });
+  }
+  clearPendingPermission(id, requestId, "resolved");
+  resolve({ action });
+  return true;
+}
+
+function handlePermissionRequest(payload, options = {}) {
+  const sessionId = resolveSessionId(payload && payload.sessionId);
+  const requestId = payload && payload.requestId;
+  if (!requestId) return Promise.resolve({});
+  return new Promise((resolve) => {
+    const status = payload.status || {};
+    const pendingPermission = payload.pendingPermission || null;
+    const wasHidden = userHidden.has(sessionId);
+    const timer = setTimeout(() => {
+      clearPendingPermission(sessionId, requestId, "timeout");
+      resolve({});
+    }, 295000);
+    pendingPermissionRequests.set(requestId, { sessionId, resolve, timer, wasHidden });
+    updateSessionFromEvent(sessionId, { type: "hook", sessionId, raw: payload.raw || {}, status });
+    setPendingPermission(sessionId, pendingPermission);
+    ensurePetWindow(sessionId);
+    userHidden.delete(sessionId);
+    const window = petWindows.get(sessionId);
+    if (window && !window.isDestroyed()) window.showInactive();
+    maybeNotify(status);
+    if (options.signal) {
+      if (options.signal.aborted) clearPendingPermission(sessionId, requestId, "aborted");
+      else options.signal.addEventListener("abort", () => {
+        clearPendingPermission(sessionId, requestId, "aborted");
+        resolve({});
+      }, { once: true });
+    }
+  });
+}
+
+function handlePermissionClear(payload = {}) {
+  return { cleared: clearSessionPendingPermission(payload.sessionId) };
 }
 
 function maybeNotify(status) {
@@ -652,6 +757,11 @@ function registerIpc() {
     broadcastSession(sessionId);
     return true;
   });
+  ipcMain.handle("claudepet:respond-permission", (event, payload) => {
+    const sessionId = findSessionForWebContents(event.sender);
+    if (!sessionId || !payload) return false;
+    return resolvePermissionRequest(sessionId, payload.requestId, payload.action);
+  });
   ipcMain.handle("claudepet:close-pet", (event) => {
     const sessionId = findSessionForWebContents(event.sender);
     if (sessionId) closePetWindow(sessionId, { dropSession: true });
@@ -715,6 +825,8 @@ async function boot() {
   bridge = await startBridgeServer({
     getState: managerPayload,
     onEvent: handleBridgeEvent,
+    onPermissionRequest: handlePermissionRequest,
+    onPermissionClear: handlePermissionClear,
     onConfig: (patch) => {
       config = saveConfig(patch || {});
       applyConfigToAllWindows();

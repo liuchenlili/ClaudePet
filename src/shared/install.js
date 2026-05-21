@@ -32,7 +32,15 @@ function isClaudepetCommand(command) {
   return typeof command === "string" && command.includes("claudepet.js");
 }
 
-function commandHook(command) {
+function commandHook(command, event) {
+  if (event === "PermissionRequest") {
+    return {
+      type: "command",
+      command,
+      async: false,
+      timeout: 300
+    };
+  }
   return {
     type: "command",
     command,
@@ -49,18 +57,33 @@ function hasCcpetHook(entry) {
   );
 }
 
-function buildHookEntry(matcher, command) {
-  const entry = { hooks: [commandHook(command)] };
+function buildHookEntry(event, matcher, command) {
+  const entry = { hooks: [commandHook(command, event)] };
   if (matcher !== null) entry.matcher = matcher;
   return entry;
+}
+
+function normalizeCcpetHook(hook, command, event) {
+  if (!hook || hook.type !== "command" || !isClaudepetCommand(hook.command)) return hook;
+  return {
+    ...hook,
+    ...commandHook(command, event)
+  };
 }
 
 function mergeHooks(settings, hookCommand) {
   const hooks = { ...(settings.hooks || {}) };
   for (const [event, matcher] of Object.entries(HOOK_EVENTS)) {
     const existing = Array.isArray(hooks[event]) ? hooks[event].slice() : [];
-    if (!existing.some(hasCcpetHook)) existing.push(buildHookEntry(matcher, hookCommand));
-    hooks[event] = existing;
+    const normalized = existing.map((entry) => {
+      if (!entry || !Array.isArray(entry.hooks)) return entry;
+      return {
+        ...entry,
+        hooks: entry.hooks.map((hook) => normalizeCcpetHook(hook, hookCommand, event))
+      };
+    });
+    if (!normalized.some(hasCcpetHook)) normalized.push(buildHookEntry(event, matcher, hookCommand));
+    hooks[event] = normalized;
   }
   return hooks;
 }

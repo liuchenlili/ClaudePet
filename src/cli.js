@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
 const { loadConfig } = require("./shared/config");
 const { installSettings, uninstallSettings } = require("./shared/install");
@@ -9,7 +10,8 @@ const {
   appendHistory,
   resolveSessionId
 } = require("./shared/runtime-state");
-const { sendEventWithLaunch, resolveElectronBinary, readRuntime, launchApp } = require("./shared/bridge-client");
+const { sendEventWithLaunch, resolveElectronBinary, readRuntime, launchApp, requestPermissionDecisionWithLaunch, sendPermissionClearWithLaunch } = require("./shared/bridge-client");
+const { buildPendingPermission, buildPermissionHookOutput } = require("./shared/permission-response");
 const { appHome, claudeHome, configPath, runtimePath, statePath } = require("./shared/paths");
 
 function readStdin() {
@@ -107,13 +109,45 @@ async function statusLineCommand() {
   process.stdout.write(legacyOutput || `${formatFallbackStatusLine(state)}\n`);
 }
 
+const AUTO_YES_SESSIONS = new Set();
+
 async function hookCommand() {
   const raw = await readStdin();
   const parsed = parseJson(raw);
   const status = statusFromHook(parsed);
   const sessionId = parsed.session_id || "";
-  mergeStatePatch(sessionId, { status });
-  await sendEventWithLaunch({ type: "hook", sessionId, raw: parsed, status, receivedAt: new Date().toISOString() });
+
+  if (parsed.hook_event_name !== "PermissionRequest") {
+    mergeStatePatch(sessionId, { status, pendingPermission: null });
+    await sendPermissionClearWithLaunch({ sessionId, receivedAt: new Date().toISOString() });
+    await sendEventWithLaunch({ type: "hook", sessionId, raw: parsed, status, receivedAt: new Date().toISOString() });
+    return;
+  }
+
+  const resolvedSessionId = resolveSessionId(sessionId);
+  if (AUTO_YES_SESSIONS.has(resolvedSessionId)) {
+    const output = buildPermissionHookOutput(parsed, "allow");
+    process.stdout.write(`${JSON.stringify(output)}\n`);
+    return;
+  }
+
+  const requestId = crypto.randomUUID();
+  const pendingPermission = buildPendingPermission(parsed, requestId);
+  mergeStatePatch(sessionId, { status, pendingPermission });
+  const response = await requestPermissionDecisionWithLaunch({
+    type: "permission-request",
+    sessionId,
+    requestId,
+    raw: parsed,
+    status,
+    pendingPermission,
+    receivedAt: new Date().toISOString()
+  });
+  const action = response && response.action;
+  if (action === "auto_yes_session") AUTO_YES_SESSIONS.add(resolveSessionId(sessionId));
+  const output = buildPermissionHookOutput(parsed, action);
+  if (output) process.stdout.write(`${JSON.stringify(output)}\n`);
+  else mergeStatePatch(sessionId, { pendingPermission: null });
 }
 
 function parseFlags(argv) {
